@@ -66,6 +66,10 @@ function getValue(values, name) {
 function evaluate(formula, values) {
     const expression = formula.replace(/\b[A-Za-z_]\w*(\.\w+)?/g, (name) => {
         const value = getValue(values, name);
+        // Например, в варианте записали "ro: 8,9 г/см³" — с единицами это уже текст, а не число
+        if (typeof value === 'string') {
+            throw new Error(`Величина "${name}" записана текстом ("${value}"), а в формуле нужно число — уберите единицы измерения`);
+        }
         if (typeof value !== 'number') {
             throw new Error(`Неизвестная величина "${name}" в формуле "${formula}"`);
         }
@@ -138,7 +142,11 @@ function computeAnswer(template, values) {
     // Сдвигаем запятую, округляем до целого и сдвигаем обратно: 4.35 → 43.5 → 44 → 4.4.
     // cleanNumber нужен и здесь: 0.145 * 100 = 14.499999999999998, и без него
     // при precision = 2 получилось бы 0.14 вместо 0.15
-    return Math.round(cleanNumber(answer * factor)) / factor;
+    const rounded = Math.round(cleanNumber(answer * factor)) / factor;
+
+    // Math.round(-0.3) дает -0 («минус ноль»), и formatNumber записал бы ответ как "-0".
+    // -0 === 0 считается верным, поэтому для любого нуля возвращаем обычный 0
+    return rounded === 0 ? 0 : rounded;
 }
 
 // Создает конкретную задачу из шаблона.
@@ -159,7 +167,7 @@ function generateTask(template, topicId) {
     };
 }
 
-// Делаем функции доступными для server.js.
+// Делаем функции доступными для server.js и validator.js.
 // В Node.js каждый файл — отдельный модуль: другой файл получает только то,
 // что перечислено в module.exports, когда подключает его через require('./generator.js')
 module.exports = {
@@ -167,6 +175,7 @@ module.exports = {
     cleanNumber,
     evaluate,
     formatNumber,
+    fillText,
     computeValues,
     getPrecision,
     computeAnswer,
