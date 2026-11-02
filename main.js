@@ -38,7 +38,7 @@ function askTaskCount(topicName) {
     // Преобразуем введенную строку в число
     const count = Number(input);
 
-    // Нужно целое число от 1 до 100: слишком много задач «повесит» страницу
+    // Нужно целое число от 1 до 100 — столько же разрешает сервер (server.js)
     if (!Number.isInteger(count) || count < 1 || count > 100) {
         alert("Введите целое число от 1 до 100.");
         return null;
@@ -46,59 +46,93 @@ function askTaskCount(topicName) {
     return count;
 }
 
-// Загружает JSON-файл темы из папки tasks (например, tasks/7_mechanics.json).
+// Подсказка на случай, если связаться с сервером не удалось
+const SERVER_HINT = "Нет связи с сервером. Запустите его командой node server.js " +
+    "и откройте страницу по адресу http://localhost:8000 (см. раздел «Запуск» в README.md).";
+
+// Отправляет данные на сервер (POST-запрос) и возвращает ответ сервера — объект из JSON.
 // Запрос к серверу занимает время, поэтому функция асинхронная (async):
 // await ждет ответа, не замораживая страницу.
-async function loadTopic(topicId) {
-    const response = await fetch(`./tasks/${topicId}.json`);
+// Адрес относительный ("./api/tasks"): запрос уходит на тот же сервер, с которого открыта страница
+async function sendRequest(url, data) {
+    let response;
+    let result;
 
-    // response.ok равно false, если сервер ответил ошибкой (например, 404 — файла нет)
-    if (!response.ok) {
-        throw new Error(`Не удалось загрузить тему "${topicId}" (код ответа ${response.status})`);
-    }
-
-    // Превращаем текст JSON в обычный объект JavaScript
-    return response.json();
-}
-
-// Функция генерации задач
-// Принимает ID темы и количество задач
-async function startTest(topicId, count) {
-    // try/catch перехватывает ошибки: если файл темы не загрузился или в шаблоне
-    // задачи есть ошибка, пользователь увидит сообщение, а не «молчащую» кнопку
+    // Сюда попадают ошибки связи: сервер не запущен, страница открыта двойным кликом
+    // (адрес file://) или открыта с другого сервера, который отвечает не в формате JSON
+    // (например, встроенный сервер WebStorm)
     try {
-        const topic = await loadTopic(topicId);   // Берем тему с шаблонами задач из JSON-файла
-        const generatedTasks = [];                // Создаем пустой массив для сгенерированных задач
-
-        // Цикл: генерируем столько задач, сколько попросил пользователь
-        for (let i = 0; i < count; i++) {
-            // Выбираем случайный шаблон задачи из темы и создаем по нему задачу со случайными числами
-            const template = pickRandom(topic.tasks);
-            generatedTasks.push(generateTask(template, topicId));
-        }
-
-        printTasks(topic.title, generatedTasks);
+        response = await fetch(url, {
+            method: 'POST',                                   // POST — отправляем данные на сервер
+            headers: { 'Content-Type': 'application/json' },  // Сообщаем, что данные в формате JSON
+            body: JSON.stringify(data)                        // Превращаем объект в текст JSON
+        });
+        result = await response.json();                      // Превращаем текст ответа обратно в объект
     } catch (error) {
         console.error(error);
+        throw new Error(SERVER_HINT); // throw передает ошибку дальше — тому, кто вызвал sendRequest
+    }
 
-        let message = `Ошибка: ${error.message}`;
-        // Если index.html открыт двойным кликом (адрес начинается с file://), браузер запрещает fetch
-        if (location.protocol === 'file:') {
-            message += '\n\nОткройте страницу через локальный сервер (см. раздел «Запуск» в README.md).';
+    // response.ok равно false, если сервер ответил ошибкой (например, 404 — задача не найдена).
+    // Текст ошибки сервер присылает в поле error, а код ответа запоминаем в error.status:
+    // по нему askAnswer отличит «введено не число» (код 400) от остальных ошибок
+    if (!response.ok) {
+        const error = new Error(result.error ?? SERVER_HINT);
+        error.status = response.status;
+        throw error;
+    }
+    return result;
+}
+
+// Показывает задачу и спрашивает ответ, пока сервер не примет его на проверку.
+// Возвращает результат проверки { correct, correctAnswer } или null, если нажата "Отмена"
+async function askAnswer(task, header) {
+    // Цикл повторяется, если введено не число
+    while (true) {
+        const input = prompt(`${header}\n\n${task.text}\n\nВведите ответ числом (${task.unit}):`, "");
+
+        // Пользователь нажал "Отмена"
+        if (input === null) return null;
+
+        // await нужен прямо здесь, внутри try: только так ошибка сервера попадет в catch
+        try {
+            return await sendRequest('./api/check', { id: task.id, answer: input });
+        } catch (error) {
+            // Остальные ошибки (задача не найдена, нет связи с сервером) повтором не исправить:
+            // передаем их дальше в startTest — там появится сообщение, и тест прервется
+            if (error.status !== 400) throw error;
+
+            alert(error.message); // «Введите ответ числом, например 2,5» — и спрашиваем снова
         }
-        alert(message);
     }
 }
 
-// Выводит сгенерированные задачи в консоль браузера (F12 → Console)
-function printTasks(topicTitle, tasks) {
-    console.log(`Тема "${topicTitle}". Сгенерировано задач: ${tasks.length}`);
+// Запускает тест: просит сервер создать задачи и по очереди показывает их пользователю.
+// Принимает ID темы и количество задач
+async function startTest(topicId, count) {
+    // try/catch перехватывает ошибки: если сервер недоступен или ответил ошибкой,
+    // пользователь увидит сообщение, а не «молчащую» кнопку
+    try {
+        // Сервер присылает название темы и задачи без правильных ответов:
+        // { title: "...", tasks: [ { id, text, unit }, ... ] }
+        const topic = await sendRequest('./api/tasks', { topicId: topicId, count: count });
 
-    // Проходимся по сгенерированным задачам и выводим их в консоль
-    tasks.forEach((task, index) => {
-        console.log(`${index + 1}. ${task.text} (Ответ: ${formatNumber(task.answer)} ${task.unit})`);
-    });
+        // Проходимся по задачам: показываем условие, отправляем ответ на проверку, сообщаем результат
+        for (let i = 0; i < topic.tasks.length; i++) {
+            const task = topic.tasks[i];
+            const result = await askAnswer(task, `${topic.title}. Задача ${i + 1} из ${topic.tasks.length}`);
 
-    // Полные объекты задач: в них видны сохраненные случайные параметры (params)
-    console.log(tasks);
+            // Если пользователь нажал "Отмена", прекращаем тест
+            if (result === null) return;
+
+            if (result.correct) {
+                alert("Верно!");
+            } else {
+                alert(`Неверно. Правильный ответ: ${result.correctAnswer} ${task.unit}`);
+            }
+        }
+    } catch (error) {
+        console.error(error);
+        alert(`Ошибка: ${error.message}`);
+    }
 }
