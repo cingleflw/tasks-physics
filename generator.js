@@ -1,7 +1,8 @@
 // Генератор задач.
 // Превращает шаблон задачи из JSON-файла (папка tasks/) в конкретную задачу
-// со случайными числами. Файл не работает со страницей (DOM), поэтому позже
-// его можно будет подключить и на сервере — для проверки ответов.
+// со случайными числами. Файл подключается на сервере (server.js): сервер создает
+// задачи и проверяет ответы, поэтому браузеру этот файл не нужен и не отдается.
+// Формулы ответов хранятся в шаблонах tasks/*.json — их сервер тоже не отдает.
 
 // Случайное целое число от min до max включительно
 function randomInt(min, max) {
@@ -123,14 +124,20 @@ function computeValues(template, params) {
     return values;
 }
 
+// Сколько знаков после запятой оставлять в ответе.
+// Если precision в шаблоне не указан — 2 знака
+function getPrecision(template) {
+    return template.precision ?? 2;
+}
+
 // Шаг 3. Правильный ответ, округленный до precision знаков после запятой
-// (если precision в шаблоне не указан — до 2 знаков)
 function computeAnswer(template, values) {
     const answer = evaluate(template.answer, values);
-    const factor = 10 ** (template.precision ?? 2);
+    const factor = 10 ** getPrecision(template);
 
     // Сдвигаем запятую, округляем до целого и сдвигаем обратно: 4.35 → 43.5 → 44 → 4.4.
-    // cleanNumber нужен и здесь: 4.35 * 10 = 43.49999999999999, и без него получилось бы 4.3
+    // cleanNumber нужен и здесь: 0.145 * 100 = 14.499999999999998, и без него
+    // при precision = 2 получилось бы 0.14 вместо 0.15
     return Math.round(cleanNumber(answer * factor)) / factor;
 }
 
@@ -147,7 +154,21 @@ function generateTask(template, topicId) {
         taskId: template.id,                        // Номер шаблона внутри темы
         params: params,                             // Сохраненные случайные значения
         text: fillText(template.text, values),      // Текст условия с подставленными числами
-        answer: computeAnswer(template, values),    // Правильный ответ (для проверки)
+        answer: computeAnswer(template, values),    // Правильный ответ (при проверке сервер вычисляет его заново по params)
         unit: template.unit                         // Единица измерения ответа
     };
 }
+
+// Делаем функции доступными для server.js.
+// В Node.js каждый файл — отдельный модуль: другой файл получает только то,
+// что перечислено в module.exports, когда подключает его через require('./generator.js')
+module.exports = {
+    pickRandom,
+    cleanNumber,
+    evaluate,
+    formatNumber,
+    computeValues,
+    getPrecision,
+    computeAnswer,
+    generateTask
+};
