@@ -33,9 +33,10 @@ function randomParam(spec) {
 
     const step = spec.step ?? 1; // Если шаг не указан, он равен 1
 
-    // Сколько шагов помещается в диапазоне. Округляем, а не отбрасываем дробную часть:
-    // (1 - 0.3) / 0.1 = 6.999999999999999, а шагов на самом деле 7
-    const stepsCount = Math.round((spec.max - spec.min) / step);
+    // Сколько целых шагов помещается в диапазоне.
+    // cleanNumber убирает погрешность: (1 - 0.3) / 0.1 = 6.999999999999999 → 7,
+    // а Math.floor отбрасывает неполный шаг, чтобы число не вышло за max
+    const stepsCount = Math.floor(cleanNumber((spec.max - spec.min) / step));
 
     return cleanNumber(spec.min + step * randomInt(0, stepsCount));
 }
@@ -51,6 +52,8 @@ function getValue(values, name) {
     const value = values[parts[0]];
     if (parts.length === 1) return value;
 
+    // Поле можно взять только у объекта — варианта из choices, например material.ro
+    if (typeof value !== 'object' || value === null) return undefined;
     return Object.hasOwn(value, parts[1]) ? value[parts[1]] : undefined;
 }
 
@@ -124,7 +127,11 @@ function computeValues(template, params) {
 // (если precision в шаблоне не указан — до 2 знаков)
 function computeAnswer(template, values) {
     const answer = evaluate(template.answer, values);
-    return Number(answer.toFixed(template.precision ?? 2));
+    const factor = 10 ** (template.precision ?? 2);
+
+    // Сдвигаем запятую, округляем до целого и сдвигаем обратно: 4.35 → 43.5 → 44 → 4.4.
+    // cleanNumber нужен и здесь: 4.35 * 10 = 43.49999999999999, и без него получилось бы 4.3
+    return Math.round(cleanNumber(answer * factor)) / factor;
 }
 
 // Создает конкретную задачу из шаблона.

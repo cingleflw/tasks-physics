@@ -28,18 +28,19 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Спрашивает у пользователя, сколько задач он хочет решить.
-// Возвращает положительное целое число или null, если ввод отменен или неверен
+// Возвращает целое число от 1 до 100 или null, если ввод отменен или неверен
 function askTaskCount(topicName) {
     const input = prompt(`Тема: "${topicName}".\nСколько задач решить?`, "");
 
     // Если пользователь нажал "Отмена" (вернется null) или ничего не ввел
     if (input === null || input === "") return null;
 
-    // Преобразуем введенную строку в целое число
-    const count = parseInt(input);
+    // Преобразуем введенную строку в число
+    const count = Number(input);
 
-    if (isNaN(count) || count <= 0) {
-        alert("Введите положительное число.");
+    // Нужно целое число от 1 до 100: слишком много задач «повесит» страницу
+    if (!Number.isInteger(count) || count < 1 || count > 100) {
+        alert("Введите целое число от 1 до 100.");
         return null;
     }
     return count;
