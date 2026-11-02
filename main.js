@@ -1,31 +1,63 @@
+// Функция sendRequest (запрос к серверу) — из файла api.js: он подключается раньше этого файла
+
 document.addEventListener('DOMContentLoaded', () => {
-
-    // Находим все кнопки, у которых есть класс 'topic-btn'
-    const buttons = document.querySelectorAll('.topic-btn');
-
-    // Проходимся циклом по каждой найденной кнопке
-    buttons.forEach(button => {
-        // Проверка события клика
-        button.addEventListener('click', (event) => {
-
-            // event.target — это именно та кнопка, по которой кликнули.
-            // data-topic берет значение из HTML-атрибута data-topic (например, "7_mechanics")
-            const topicId = event.target.dataset.topic;
-
-            // textContent берет текст, написанный внутри кнопки (например, "Механическое движение")
-            const topicName = event.target.textContent;
-
-            // Спрашиваем у пользователя, сколько задач он хочет решить
-            const count = askTaskCount(topicName);
-
-            // Если пользователь нажал "Отмена" или ввел неверное число, прерываем выполнение
-            if (count === null) return;
-
-            // Если все проверки пройдены, запускаем тест
-            startTest(topicId, count);
-        });
-    });
+    // Список тем загружается с сервера: так на странице появляются
+    // и темы, добавленные через конструктор
+    showTopics();
 });
+
+// Загружает с сервера список тем и показывает кнопки тем, разбитые по классам
+async function showTopics() {
+    // Блок <div id="topics"> из index.html, в который добавляются кнопки
+    const container = document.getElementById('topics');
+
+    try {
+        // Сервер присылает { topics: [ { id, grade, title, count }, ... ] }.
+        // Темы уже отсортированы: по классу, внутри класса — по алфавиту
+        const result = await sendRequest('./api/topics');
+
+        container.textContent = ''; // Убираем надпись «Загрузка списка тем…»
+        let grade = null;           // Класс, заголовок которого выведен последним
+
+        for (const topic of result.topics) {
+            // Тему без задач (только что созданную в конструкторе) ученику не показываем
+            if (topic.count === 0) continue;
+
+            // Начался следующий класс — выводим заголовок, например «7 класс»
+            if (topic.grade !== grade) {
+                const heading = document.createElement('h3');
+                heading.textContent = `${topic.grade} класс`;
+                container.append(heading);
+                grade = topic.grade;
+            }
+
+            // Кнопка темы. textContent вставляет название как обычный текст:
+            // даже если в нем есть знаки < и >, браузер не примет их за HTML-теги
+            const button = document.createElement('button');
+            button.textContent = topic.title;
+
+            // Проверка события клика. Функция-обработчик «помнит» переменную topic
+            // своего шага цикла, поэтому у каждой кнопки — своя тема
+            button.addEventListener('click', () => {
+                // Спрашиваем у пользователя, сколько задач он хочет решить
+                const count = askTaskCount(topic.title);
+
+                // Если пользователь нажал "Отмена" или ввел неверное число, прерываем выполнение
+                if (count === null) return;
+
+                // Если все проверки пройдены, запускаем тест
+                startTest(topic.id, count);
+            });
+
+            // Каждая кнопка — на своей строке
+            container.append(button, document.createElement('br'));
+        }
+    } catch (error) {
+        // Например, нет связи с сервером: показываем текст ошибки вместо списка тем
+        console.error(error);
+        container.textContent = `Ошибка: ${error.message}`;
+    }
+}
 
 // Спрашивает у пользователя, сколько задач он хочет решить.
 // Возвращает целое число от 1 до 100 или null, если ввод отменен или неверен
@@ -44,44 +76,6 @@ function askTaskCount(topicName) {
         return null;
     }
     return count;
-}
-
-// Подсказка на случай, если связаться с сервером не удалось
-const SERVER_HINT = "Нет связи с сервером. Запустите его командой node server.js " +
-    "и откройте страницу по адресу http://localhost:8000 (см. раздел «Запуск» в README.md).";
-
-// Отправляет данные на сервер (POST-запрос) и возвращает ответ сервера — объект из JSON.
-// Запрос к серверу занимает время, поэтому функция асинхронная (async):
-// await ждет ответа, не замораживая страницу.
-// Адрес относительный ("./api/tasks"): запрос уходит на тот же сервер, с которого открыта страница
-async function sendRequest(url, data) {
-    let response;
-    let result;
-
-    // Сюда попадают ошибки связи: сервер не запущен, страница открыта двойным кликом
-    // (адрес file://) или открыта с другого сервера, который отвечает не в формате JSON
-    // (например, встроенный сервер WebStorm)
-    try {
-        response = await fetch(url, {
-            method: 'POST',                                   // POST — отправляем данные на сервер
-            headers: { 'Content-Type': 'application/json' },  // Сообщаем, что данные в формате JSON
-            body: JSON.stringify(data)                        // Превращаем объект в текст JSON
-        });
-        result = await response.json();                      // Превращаем текст ответа обратно в объект
-    } catch (error) {
-        console.error(error);
-        throw new Error(SERVER_HINT); // throw передает ошибку дальше — тому, кто вызвал sendRequest
-    }
-
-    // response.ok равно false, если сервер ответил ошибкой (например, 404 — задача не найдена).
-    // Текст ошибки сервер присылает в поле error, а код ответа запоминаем в error.status:
-    // по нему askAnswer отличит «введено не число» (код 400) от остальных ошибок
-    if (!response.ok) {
-        const error = new Error(result.error ?? SERVER_HINT);
-        error.status = response.status;
-        throw error;
-    }
-    return result;
 }
 
 // Показывает задачу и спрашивает ответ, пока сервер не примет его на проверку.

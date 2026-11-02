@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Конструктор тем и задач</title>
+    <style>
+        /* Каждое поле с подписью — на своей строке */
+        label { display: block; margin: 8px 0; }
+        textarea { display: block; width: 100%; max-width: 640px; box-sizing: border-box; }
+        /* Строка одного случайного параметра — в рамке */
+        .param-row { border: 1px solid #ccc; padding: 4px 8px; margin: 8px 0; max-width: 640px; }
+        .hint { color: #555; font-size: 0.9em; max-width: 640px; }
+        .error { color: #c00; }
+        .warning { color: #a60; }
+        pre { background: #f4f4f4; padding: 8px; overflow-x: auto; max-width: 640px; }
+    </style>
+    <script src="./api.js"></script>
+    <script src="./constructor.js"></script>
+</head>
+<body>
+<p><a href="./">← К тесту</a></p>
+<h1>Конструктор тем и задач</h1>
+
+<h2>Новая тема</h2>
+<label>Класс:
+    <select id="topic-grade">
+        <option>6</option>
+        <option selected>7</option>
+        <option>8</option>
+    </select>
+</label>
+<label>Название: <input id="topic-title" size="40" placeholder="Давление"></label>
+<label>Имя файла: <input id="topic-id" size="20" placeholder="7_pressure"></label>
+<p class="hint">Имя файла — номер класса, знак _ и название латинскими буквами.
+    Тема сохранится в файл tasks/7_pressure.json. На главной странице она появится, когда в ней будет хотя бы одна задача.</p>
+<button id="create-topic">Создать тему</button>
+<p id="topic-message"></p>
+
+<h2>Новая задача</h2>
+<label>Тема: <select id="task-topic"></select></label>
+
+<label>Текст условия:
+    <textarea id="task-text" rows="4" placeholder="Сила {F} Н действует на площадь {S} м². Найдите давление."></textarea>
+</label>
+<p class="hint">Величины подставляются в текст в фигурных скобках: {S}. Поле варианта записывается через точку: {material.name}.</p>
+
+<h3>Случайные параметры</h3>
+<div id="params"></div>
+<button id="add-param">Добавить параметр</button>
+<p class="hint">Диапазон чисел: «от», «до» и шаг (по умолчанию 1), например p от 100 до 1000 с шагом 100.
+    Список вариантов — по одному в строке: число (0,5) или набор полей (name: меди; ro: 8,9).
+    Числа пишутся без единиц измерения. Незаполненная строка параметра не учитывается.</p>
+
+<h3>Вычисляемые величины</h3>
+<label>По одной в строке, «имя = формула»:
+    <textarea id="task-derived" rows="3" placeholder="F = p * S"></textarea>
+</label>
+<p class="hint">Величины считаются по порядку и могут использовать предыдущие.
+    В формулах — числа (дробь можно писать через запятую: 9,8), имена величин, знаки + - * / и скобки.</p>
+
+<h3>Ответ</h3>
+<label>Формула ответа: <input id="task-answer" size="30" placeholder="p"></label>
+<label>Единица измерения: <input id="task-unit" size="10" placeholder="Па"></label>
+<label>Знаков после запятой:
+    <select id="task-precision">
+        <option>0</option>
+        <option>1</option>
+        <option value="" selected>2 (по умолчанию)</option>
+        <option>3</option>
+        <option>4</option>
+        <option>5</option>
+        <option>6</option>
+    </select>
+</label>
+
+<p>
+    <button id="preview-task">Предпросмотр</button>
+    <button id="save-task">Сохранить задачу</button>
+</p>
+<p id="task-message"></p>
+<div id="preview"></div>
+
+<!-- Образец строки параметра: кнопка «Добавить параметр» копирует его в блок params.
+     Содержимое <template> браузер не показывает, пока его не скопируют -->
+<template id="param-row">
+    <div class="param-row">
+        <label>Имя: <input class="param-name" size="10" placeholder="S"></label>
+        <label>Вид:
+            <select class="param-kind">
+                <option value="range">диапазон чисел</option>
+                <option value="choices">список вариантов</option>
+            </select>
+        </label>
+        <p class="param-range">
+            от <input class="param-min" size="6">
+            до <input class="param-max" size="6">
+            шаг <input class="param-step" size="6" placeholder="1">
+        </p>
+        <!-- hidden прячет элемент; constructor.js переключает его при смене вида -->
+        <div class="param-choices" hidden>
+            <label>Варианты, по одному в строке:
+                <textarea class="param-variants" rows="3" placeholder="0,5&#10;1&#10;2"></textarea>
+            </label>
+        </div>
+    </div>
+</template>
+</body>
+</html>
