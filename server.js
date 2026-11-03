@@ -1,9 +1,9 @@
 // Сервер приложения.
 // Отдает браузеру страницы, создает задачи, проверяет ответы пользователей
 // и сохраняет новые темы и задачи из конструктора (constructor.html).
-// Задачи создаются здесь, на сервере: браузер получает только номер задачи, текст
-// условия и единицу измерения. Правильный ответ, формулы и случайные параметры
-// остаются на сервере, поэтому подсмотреть ответ в браузере нельзя.
+// Задачи создаются здесь, на сервере: браузер получает только номер задачи,
+// название темы, текст условия и единицу измерения. Правильный ответ, формулы
+// и случайные параметры остаются на сервере, поэтому подсмотреть ответ в браузере нельзя.
 //
 // Запуск: node server.js, затем открыть в браузере http://localhost:8000
 
@@ -16,7 +16,7 @@ const crypto = require('node:crypto');  // Случайные номера за�
 
 // Берем из генератора задач (generator.js) нужные функции
 const {
-    pickRandom, cleanNumber, evaluate, formatNumber,
+    shuffle, cleanNumber, evaluate, formatNumber,
     computeValues, getPrecision, computeAnswer, generateTask
 } = require('./generator.js');
 
@@ -243,9 +243,64 @@ function isAnswerCorrect(userAnswer, exactAnswer, precision) {
     return difference <= 0.5;
 }
 
-// POST /api/tasks — создать задачи по теме.
-// Браузер присылает { "topicId": "7_mechanics", "count": 5 },
-// сервер отвечает { "title": "...", "tasks": [ { "id": "...", "text": "...", "unit": "км/ч" }, ... ] }
+// Выбирает шаблоны для теста: count пар { topic, template } из выбранных тем topics.
+// Шаблоны раздаются, как карты: у каждой темы своя колода — ее шаблоны (topic.tasks)
+// в случайном порядке. За один ход каждая тема, в колоде которой еще есть шаблоны,
+// отдает по одному, а очередь тем на каждом ходу своя, случайная. Поэтому:
+//   - задачи делятся между темами поровну, пока в темах есть неиспользованные шаблоны;
+//   - шаблон повторяется, только когда розданы все шаблоны всех выбранных тем:
+//     тогда колоды тасуются заново и начинается новый круг.
+// Например, темы с 2 и 8 шаблонами, 10 задач — все 10 шаблонов по одному разу;
+// три темы по 6 шаблонов, 4 задачи — по задаче из каждой темы и еще одна из случайной.
+// Тем должна быть хотя бы одна, и в каждой — хотя бы один шаблон: это проверяет
+// handleTasks (без тем цикл while никогда бы не закончился)
+function pickTemplates(topics, count) {
+    const picked = []; // Выбранные пары { topic, template }
+    let decks = [];    // Колоды, в которых еще остались шаблоны
+
+    while (picked.length < count) {
+        // Колоды кончились (или это самое начало) — новый круг: тасуем шаблоны каждой темы.
+        // shuffle возвращает перемешанную копию, поэтому сами шаблоны темы не пропадут
+        if (decks.length === 0) {
+            for (const topic of topics) {
+                decks.push({ topic: topic, templates: shuffle(topic.tasks) });
+            }
+        }
+
+        // Один ход: колоды в случайном порядке отдают по шаблону.
+        // pop снимает последний шаблон колоды — колода перемешана, поэтому он случайный
+        for (const deck of shuffle(decks)) {
+            if (picked.length === count) break; // Задач уже хватает
+            picked.push({ topic: deck.topic, template: deck.templates.pop() });
+        }
+
+        // Опустевшие колоды до конца круга больше не участвуют.
+        // filter оставляет только колоды, в которых еще есть шаблоны
+        decks = decks.filter((deck) => deck.templates.length > 0);
+    }
+
+    // Перемешиваем готовый набор, чтобы задачи разных тем шли вперемешку, а не по ходам
+    return shuffle(picked);
+}
+
+// Создает задачу по шаблону так, чтобы ее условие не совпало с условиями,
+// уже попавшими в тест (usedTexts — набор Set из текстов условий).
+// Когда шаблон в тесте повторяется, числа могут выпасть те же, что в прошлый раз, —
+// тогда создаем задачу заново. Попыток не больше 10: у некоторых шаблонов всего
+// около 10 разных условий, и в длинном тесте повтор бывает неизбежен
+function generateUniqueTask(template, topicId, usedTexts) {
+    let task = generateTask(template, topicId);
+    let attempts = 1;
+    while (usedTexts.has(task.text) && attempts < 10) {
+        task = generateTask(template, topicId);
+        attempts++;
+    }
+    return task;
+}
+
+// POST /api/tasks — создать задачи по выбранным темам.
+// Браузер присылает { "topicIds": ["7_mechanics", "8_Om"], "count": 5 },
+// сервер отвечает { "tasks": [ { "id": "...", "topicTitle": "...", "text": "...", "unit": "км/ч" }, ... ] }
 async function handleTasks(request, response) {
     const data = await readJSON(request);
     // return завершает функцию: после ответа об ошибке дальше идти не нужно
@@ -253,19 +308,14 @@ async function handleTasks(request, response) {
         return sendJSON(response, 400, { error: 'Неверный запрос' });
     }
 
-    // Номер темы должен быть строкой, например "8_Om"
-    if (typeof data.topicId !== 'string') {
+    // Номера тем — список строк, например ["7_mechanics", "8_Om"].
+    // every проверяет условие для каждого элемента списка
+    const isList = Array.isArray(data.topicIds) && data.topicIds.every((id) => typeof id === 'string');
+    if (!isList) {
         return sendJSON(response, 400, { error: 'Неверный запрос' });
     }
-
-    const topic = loadTopic(data.topicId);
-    if (topic === null) {
-        return sendJSON(response, 404, { error: `Тема "${data.topicId}" не найдена` });
-    }
-
-    // В теме, только что созданной в конструкторе, задач еще нет
-    if (topic.tasks.length === 0) {
-        return sendJSON(response, 404, { error: `В теме "${topic.title}" пока нет задач` });
+    if (data.topicIds.length === 0) {
+        return sendJSON(response, 400, { error: 'Выберите хотя бы одну тему' });
     }
 
     // Браузер тоже проверяет количество задач, но сервер не должен доверять присланным данным
@@ -274,22 +324,49 @@ async function handleTasks(request, response) {
         return sendJSON(response, 400, { error: 'Количество задач должно быть целым числом от 1 до 100' });
     }
 
+    // Загружаем выбранные темы. new Set убирает повторы:
+    // тема, присланная дважды, не должна получить вдвое больше задач.
+    // Имя файла темы должно совпасть точно, с учетом больших и маленьких букв (как в handleSaveTemplate):
+    // иначе на macOS "8_om" и "8_Om" открыли бы один файл, и тема попала бы в тест дважды
+    const fileNames = fs.readdirSync(TASKS_DIR);
+    const topics = [];
+    for (const topicId of new Set(data.topicIds)) {
+        const topic = fileNames.includes(`${topicId}.json`) ? loadTopic(topicId) : null;
+        if (topic === null) {
+            return sendJSON(response, 404, { error: `Тема "${topicId}" не найдена` });
+        }
+
+        // В теме, только что созданной в конструкторе, задач еще нет
+        if (topic.tasks.length === 0) {
+            return sendJSON(response, 404, { error: `В теме "${topic.title}" пока нет задач` });
+        }
+
+        // Номер темы берем из запроса — это имя ее файла, как в списке тем:
+        // по нему handleCheck найдет шаблон, когда будет проверять ответ
+        topics.push({ id: topicId, title: topic.title, tasks: topic.tasks });
+    }
+
+    // Задачи создаем, только когда все темы загружены: если какой-то темы нет,
+    // сервер ответил ошибкой выше и не выдал ни одной задачи
     const tasks = [];
-    for (let i = 0; i < count; i++) {
-        // Выбираем случайный шаблон темы и создаем по нему задачу со случайными числами
-        const task = generateTask(pickRandom(topic.tasks), data.topicId);
+    const usedTexts = new Set(); // Условия задач, уже попавших в тест
+    for (const pick of pickTemplates(topics, count)) {
+        // Создаем задачу со случайными числами по выбранному шаблону
+        const task = generateUniqueTask(pick.template, pick.topic.id, usedTexts);
+        usedTexts.add(task.text);
 
         // Запоминаем задачу под случайным номером, который нельзя угадать
         const id = crypto.randomUUID();
         issuedTasks.set(id, { topicId: task.topicId, taskId: task.taskId, params: task.params });
 
-        // В браузер уходят только номер, текст условия и единица измерения.
+        // В браузер уходят только номер, название темы, текст условия и единица измерения.
         // Ни ответ (answer), ни случайные параметры (params) отправлять нельзя:
-        // в «обратных» задачах ответ — это один из параметров (например, скорость v)
-        tasks.push({ id: id, text: task.text, unit: task.unit });
+        // в «обратных» задачах ответ — это один из параметров (например, скорость v).
+        // Название темы — у каждой задачи: в одном тесте бывают задачи из разных тем
+        tasks.push({ id: id, topicTitle: pick.topic.title, text: task.text, unit: task.unit });
     }
 
-    sendJSON(response, 200, { title: topic.title, tasks: tasks });
+    sendJSON(response, 200, { tasks: tasks });
 }
 
 // POST /api/check — проверить ответ пользователя.

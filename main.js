@@ -1,14 +1,17 @@
 // Функция sendRequest (запрос к серверу) — из файла api.js: он подключается раньше этого файла
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Кнопка «Начать тест» запускает тест по отмеченным темам
+    document.getElementById('start-test').addEventListener('click', startSelectedTest);
+
     // Список тем загружается с сервера: так на странице появляются
     // и темы, добавленные через конструктор
     showTopics();
 });
 
-// Загружает с сервера список тем и показывает кнопки тем, разбитые по классам
+// Загружает с сервера список тем и показывает темы с галочками, разбитые по классам
 async function showTopics() {
-    // Блок <div id="topics"> из index.html, в который добавляются кнопки
+    // Блок <div id="topics"> из index.html, в который добавляются темы
     const container = document.getElementById('topics');
 
     try {
@@ -31,51 +34,77 @@ async function showTopics() {
                 grade = topic.grade;
             }
 
-            // Кнопка темы. textContent вставляет название как обычный текст:
-            // даже если в нем есть знаки < и >, браузер не примет их за HTML-теги
-            const button = document.createElement('button');
-            button.textContent = topic.title;
+            // Галочка темы (checkbox). В value запоминаем номер темы —
+            // его прочитает getSelectedTopicIds, когда нажмут «Начать тест»
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.value = topic.id;
 
-            // Проверка события клика. Функция-обработчик «помнит» переменную topic
-            // своего шага цикла, поэтому у каждой кнопки — своя тема
-            button.addEventListener('click', () => {
-                // Спрашиваем у пользователя, сколько задач он хочет решить
-                const count = askTaskCount(topic.title);
+            // label связывает галочку с названием: щелчок по названию тоже ставит галочку.
+            // Строку append вставляет как обычный текст (как textContent): даже если
+            // в названии есть знаки < и >, браузер не примет их за HTML-теги
+            const label = document.createElement('label');
+            label.append(checkbox, ` ${topic.title}`);
 
-                // Если пользователь нажал "Отмена" или ввел неверное число, прерываем выполнение
-                if (count === null) return;
-
-                // Если все проверки пройдены, запускаем тест
-                startTest(topic.id, count);
-            });
-
-            // Каждая кнопка — на своей строке
-            container.append(button, document.createElement('br'));
+            // Каждая тема — на своей строке
+            container.append(label, document.createElement('br'));
         }
+
+        // Список загружен — теперь можно начинать тест
+        document.getElementById('start-test').disabled = false;
     } catch (error) {
-        // Например, нет связи с сервером: показываем текст ошибки вместо списка тем
+        // Например, нет связи с сервером: показываем текст ошибки вместо списка тем.
+        // Кнопка «Начать тест» остается выключенной: выбирать не из чего
         console.error(error);
         container.textContent = `Ошибка: ${error.message}`;
     }
 }
 
-// Спрашивает у пользователя, сколько задач он хочет решить.
-// Возвращает целое число от 1 до 100 или null, если ввод отменен или неверен
-function askTaskCount(topicName) {
-    const input = prompt(`Тема: "${topicName}".\nСколько задач решить?`, "");
+// Номера отмеченных тем, например ["7_mechanics", "8_Om"]
+function getSelectedTopicIds() {
+    const ids = [];
+    // querySelectorAll находит все отмеченные (:checked) галочки внутри блока topics
+    for (const checkbox of document.querySelectorAll('#topics input:checked')) {
+        ids.push(checkbox.value);
+    }
+    return ids;
+}
 
-    // Если пользователь нажал "Отмена" (вернется null) или ничего не ввел
-    if (input === null || input === "") return null;
-
-    // Преобразуем введенную строку в число
-    const count = Number(input);
+// Читает количество задач из поля «Количество задач».
+// Возвращает целое число от 1 до 100 или null, если введено что-то другое.
+// Если в поле не число, браузер возвращает пустую строку, а Number('') = 0 — проверку это не пройдет
+function readTaskCount() {
+    const count = Number(document.getElementById('task-count').value);
 
     // Нужно целое число от 1 до 100 — столько же разрешает сервер (server.js)
-    if (!Number.isInteger(count) || count < 1 || count > 100) {
-        alert("Введите целое число от 1 до 100.");
-        return null;
-    }
+    if (!Number.isInteger(count) || count < 1 || count > 100) return null;
     return count;
+}
+
+// Кнопка «Начать тест»: проверяет, что отмечены темы и введено количество задач, и запускает тест
+async function startSelectedTest() {
+    const topicIds = getSelectedTopicIds();
+    if (topicIds.length === 0) {
+        alert("Выберите хотя бы одну тему.");
+        return;
+    }
+
+    const count = readTaskCount();
+    if (count === null) {
+        alert("Введите количество задач — целое число от 1 до 100.");
+        return;
+    }
+
+    // Пока идет тест, кнопка выключена: при двойном щелчке второй тест
+    // начался бы поверх первого, и окна с задачами перемешались бы
+    const button = document.getElementById('start-test');
+    button.disabled = true;
+    try {
+        await startTest(topicIds, count);
+    } finally {
+        // finally выполняется в любом случае — и после конца теста, и после ошибки
+        button.disabled = false;
+    }
 }
 
 // Показывает задачу и спрашивает ответ, пока сервер не примет его на проверку.
@@ -101,20 +130,22 @@ async function askAnswer(task, header) {
     }
 }
 
-// Запускает тест: просит сервер создать задачи и по очереди показывает их пользователю.
-// Принимает ID темы и количество задач
-async function startTest(topicId, count) {
+// Запускает тест: просит сервер составить задачи по выбранным темам и по очереди показывает их пользователю.
+// Принимает список ID тем и количество задач
+async function startTest(topicIds, count) {
     // try/catch перехватывает ошибки: если сервер недоступен или ответил ошибкой,
     // пользователь увидит сообщение, а не «молчащую» кнопку
     try {
-        // Сервер присылает название темы и задачи без правильных ответов:
-        // { title: "...", tasks: [ { id, text, unit }, ... ] }
-        const topic = await sendRequest('./api/tasks', { topicId: topicId, count: count });
+        // Сервер присылает задачи без правильных ответов:
+        // { tasks: [ { id, topicTitle, text, unit }, ... ] }
+        const test = await sendRequest('./api/tasks', { topicIds: topicIds, count: count });
 
         // Проходимся по задачам: показываем условие, отправляем ответ на проверку, сообщаем результат
-        for (let i = 0; i < topic.tasks.length; i++) {
-            const task = topic.tasks[i];
-            const result = await askAnswer(task, `${topic.title}. Задача ${i + 1} из ${topic.tasks.length}`);
+        for (let i = 0; i < test.tasks.length; i++) {
+            const task = test.tasks[i];
+
+            // В одном тесте могут быть задачи из разных тем, поэтому тема указана у каждой задачи
+            const result = await askAnswer(task, `${task.topicTitle}. Задача ${i + 1} из ${test.tasks.length}`);
 
             // Если пользователь нажал "Отмена", прекращаем тест
             if (result === null) return;
