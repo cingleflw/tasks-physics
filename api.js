@@ -38,7 +38,7 @@ async function sendRequest(url, data) {
 
     // response.ok равно false, если сервер ответил ошибкой (например, 404 — задача не найдена).
     // Текст ошибки сервер присылает в поле error, а код ответа запоминаем в error.status:
-    // по нему askAnswer в main.js отличит «введено не число» (код 400) от остальных ошибок
+    // по нему checkAnswers в main.js отличит «введено не число» (код 400) от остальных ошибок
     if (!response.ok) {
         const error = new Error(result.error ?? SERVER_HINT);
         error.status = response.status;

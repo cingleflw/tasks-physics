@@ -1,8 +1,19 @@
 // Функция sendRequest (запрос к серверу) — из файла api.js: он подключается раньше этого файла
 
+// Текущий тест: { items: [...], startTime }, а null — теста нет.
+// items — задачи теста; для каждой задачи запоминаем:
+//   task    — задача от сервера { id, topicTitle, text, unit },
+//   input   — поле для ответа на странице,
+//   message — абзац под полем: сюда пишутся просьба ввести число и результат проверки,
+//   result  — ответ сервера { correct, correctAnswer } или null, пока ответ не проверен.
+// startTime — время начала теста (Date.now(): миллисекунды, прошедшие с 1 января 1970 года)
+let currentTest = null;
+
 document.addEventListener('DOMContentLoaded', () => {
-    // Кнопка «Начать тест» запускает тест по отмеченным темам
+    // Назначаем кнопкам их действия
     document.getElementById('start-test').addEventListener('click', startSelectedTest);
+    document.getElementById('finish-test').addEventListener('click', finishTest);
+    document.getElementById('new-test').addEventListener('click', showSetup);
 
     // Список тем загружается с сервера: так на странице появляются
     // и темы, добавленные через конструктор
@@ -95,42 +106,21 @@ async function startSelectedTest() {
         return;
     }
 
-    // Пока идет тест, кнопка выключена: при двойном щелчке второй тест
-    // начался бы поверх первого, и окна с задачами перемешались бы
+    // Пока сервер составляет тест, кнопка выключена: при двойном щелчке
+    // сервер составил бы два теста, и второй заменил бы на странице первый.
+    // Когда задачи показаны, блок с кнопкой спрятан, пока не нажата кнопка «Новый тест»
+    // (см. showTasks и showSetup)
     const button = document.getElementById('start-test');
     button.disabled = true;
     try {
         await startTest(topicIds, count);
     } finally {
-        // finally выполняется в любом случае — и после конца теста, и после ошибки
+        // finally выполняется в любом случае — и после успеха, и после ошибки
         button.disabled = false;
     }
 }
 
-// Показывает задачу и спрашивает ответ, пока сервер не примет его на проверку.
-// Возвращает результат проверки { correct, correctAnswer } или null, если нажата "Отмена"
-async function askAnswer(task, header) {
-    // Цикл повторяется, если введено не число
-    while (true) {
-        const input = prompt(`${header}\n\n${task.text}\n\nВведите ответ числом (${task.unit}):`, "");
-
-        // Пользователь нажал "Отмена"
-        if (input === null) return null;
-
-        // await нужен прямо здесь, внутри try: только так ошибка сервера попадет в catch
-        try {
-            return await sendRequest('./api/check', { id: task.id, answer: input });
-        } catch (error) {
-            // Остальные ошибки (задача не найдена, нет связи с сервером) повтором не исправить:
-            // передаем их дальше в startTest — там появится сообщение, и тест прервется
-            if (error.status !== 400) throw error;
-
-            alert(error.message); // «Введите ответ числом, например 2,5» — и спрашиваем снова
-        }
-    }
-}
-
-// Запускает тест: просит сервер составить задачи по выбранным темам и по очереди показывает их пользователю.
+// Запускает тест: просит сервер составить задачи по выбранным темам и показывает их на странице.
 // Принимает список ID тем и количество задач
 async function startTest(topicIds, count) {
     // try/catch перехватывает ошибки: если сервер недоступен или ответил ошибкой,
@@ -139,25 +129,238 @@ async function startTest(topicIds, count) {
         // Сервер присылает задачи без правильных ответов:
         // { tasks: [ { id, topicTitle, text, unit }, ... ] }
         const test = await sendRequest('./api/tasks', { topicIds: topicIds, count: count });
-
-        // Проходимся по задачам: показываем условие, отправляем ответ на проверку, сообщаем результат
-        for (let i = 0; i < test.tasks.length; i++) {
-            const task = test.tasks[i];
-
-            // В одном тесте могут быть задачи из разных тем, поэтому тема указана у каждой задачи
-            const result = await askAnswer(task, `${task.topicTitle}. Задача ${i + 1} из ${test.tasks.length}`);
-
-            // Если пользователь нажал "Отмена", прекращаем тест
-            if (result === null) return;
-
-            if (result.correct) {
-                alert("Верно!");
-            } else {
-                alert(`Неверно. Правильный ответ: ${result.correctAnswer} ${task.unit}`);
-            }
-        }
+        showTasks(test.tasks);
     } catch (error) {
         console.error(error);
         alert(`Ошибка: ${error.message}`);
     }
+}
+
+// ===== Прохождение теста =====
+
+// Создает элемент tag (например, 'p') с текстом text и добавляет его в конец элемента parent.
+// textContent вставляет текст как есть: знаки < и > в условии задачи не станут HTML-тегами.
+// (Такая же функция есть в constructor.js — у конструктора своя страница)
+function addElement(parent, tag, text) {
+    const element = document.createElement(tag);
+    element.textContent = text;
+    parent.append(element);
+    return element;
+}
+
+// Показывает задачи теста на странице: у каждой задачи — тема, условие и поле для ответа.
+// Выбор тем на время теста прячется, и начинается отсчет времени
+function showTasks(tasks) {
+    const list = document.getElementById('task-list');
+    // Убираем задачи, итоги и сообщения прошлого теста
+    list.textContent = '';
+    document.getElementById('results').textContent = '';
+    document.getElementById('test-message').textContent = '';
+
+    const items = [];
+    for (const task of tasks) {
+        // li — пункт нумерованного списка ol: номер задачи браузер ставит сам.
+        // В одном тесте бывают задачи из разных тем, поэтому тема указана у каждой задачи
+        const item = addElement(list, 'li', '');
+        addElement(item, 'h3', task.topicTitle);
+        addElement(item, 'p', task.text);
+
+        // Поле для ответа — обычное текстовое (type = 'text'), а не числовое (type = 'number'):
+        // числовое поле не примет ответ с пробелом между разрядами («42 000»), а запятую
+        // разные браузеры понимают по-разному. Число из ответа получает сервер (parseUserAnswer).
+        // Подсказку для экранной клавиатуры (inputmode = 'decimal') тоже не ставим:
+        // на iPhone в такой клавиатуре нет минуса, а ответ бывает отрицательным (заряд -6 нКл)
+        const input = document.createElement('input');
+        input.type = 'text';
+
+        // label связывает подпись с полем: щелчок по слову «Ответ» ставит курсор в поле
+        const label = addElement(item, 'label', 'Ответ: ');
+        label.append(input, ` ${task.unit}`);
+
+        // Пустой абзац для сообщения: «Введите ответ числом…» или результат проверки
+        const message = addElement(item, 'p', '');
+
+        items.push({ task: task, input: input, message: message, result: null });
+    }
+
+    // На время теста прячем выбор тем (hidden) и показываем блок теста.
+    // Кнопка «Начать тест» спрятана вместе с выбором тем, поэтому второй тест
+    // не начнется поверх первого
+    document.getElementById('setup').hidden = true;
+    document.getElementById('test').hidden = false;
+    document.getElementById('finish-test').hidden = false;
+    document.getElementById('new-test').hidden = true;
+
+    // Время отсчитываем с момента, когда задачи появились на странице
+    currentTest = { items: items, startTime: Date.now() };
+}
+
+// Кнопка «Завершить тест»: отправляет ответы на проверку и показывает итоги
+async function finishTest() {
+    // Время прохождения — до нажатия кнопки: ожидание ответа сервера в него не входит.
+    // Если ответы пришлось исправлять, считается время последнего нажатия
+    const time = Date.now() - currentTest.startTime;
+    const testMessage = document.getElementById('test-message');
+    testMessage.textContent = '';
+
+    // Задачи без ответа: поле пустое или в нем одни пробелы (trim убирает пробелы по краям).
+    // filter оставляет только такие задачи, length — их количество
+    const emptyCount = currentTest.items.filter((item) => item.input.value.trim() === '').length;
+
+    // confirm — окно с кнопками «ОК» и «Отмена»: возвращает true, если нажата «ОК».
+    // «Отмена» — вернуться к тесту, ничего не отправляя на проверку
+    if (emptyCount > 0 && !confirm(`Задач без ответа: ${emptyCount}. Задача без ответа считается ошибкой. Завершить тест?`)) {
+        return;
+    }
+
+    // Пока ответы проверяются, кнопка выключена: двойной щелчок не отправит их дважды.
+    // Выключаем до первого await — иначе второй щелчок успел бы сработать
+    const button = document.getElementById('finish-test');
+    button.disabled = true;
+
+    // Поля для ответов на время проверки тоже выключаем: ответ, исправленный, пока идет
+    // проверка, не совпал бы с тем, что проверил сервер
+    for (const item of currentTest.items) {
+        item.input.disabled = true;
+    }
+
+    try {
+        const invalidItems = await checkAnswers();
+
+        // Некоторые ответы сервер не принял, потому что это не числа: тест продолжается.
+        // Поля непроверенных задач (не числа и пустые) снова включаем — их можно исправить.
+        // Проверенные ответы остаются выключенными: на каждую задачу одна попытка
+        if (invalidItems.length > 0) {
+            for (const item of currentTest.items) {
+                if (item.result === null) item.input.disabled = false;
+            }
+            testMessage.textContent = 'Не все ответы удалось проверить: исправьте ответы с пометкой «Введите ответ числом» и снова нажмите «Завершить тест».';
+            // focus ставит курсор в первое такое поле, и браузер прокручивает к нему страницу
+            // (выключенное поле фокус не получает, поэтому включаем поля раньше)
+            invalidItems[0].input.focus();
+            return;
+        }
+
+        showResults(time);
+    } catch (error) {
+        // Задача не найдена (сервер перезапускали), нет связи с сервером или ошибка на сервере —
+        // повторное нажатие этого не исправит, поэтому тест прерывается.
+        // Результаты уже проверенных задач все равно показываем: сервер эти задачи уже удалил,
+        // и узнать результаты еще раз не получится.
+        // Начать тест заново можно кнопкой «Новый тест» — ее показывает endTest
+        console.error(error);
+        showVerdicts('Не проверено');
+        testMessage.textContent = `Тест прерван. ${error.message}`;
+        endTest();
+    } finally {
+        // finally выполняется в любом случае — и после проверки, и после ошибки
+        button.disabled = false;
+    }
+}
+
+// Отправляет на проверку ответы, которые еще не проверены, — по очереди, по одному запросу на задачу.
+// Возвращает список задач, ответ которых сервер не принял, потому что это не число
+async function checkAnswers() {
+    const invalidItems = [];
+
+    for (const item of currentTest.items) {
+        // Ответ, проверенный при прошлом нажатии, второй раз не отправляем:
+        // на каждую задачу одна попытка, и сервер его уже не найдет
+        if (item.result !== null) continue;
+
+        // Убираем прошлую просьбу ввести число — ответ могли исправить
+        item.message.textContent = '';
+
+        // Задачу без ответа на проверку не отправляем: она будет засчитана как ошибка
+        if (item.input.value.trim() === '') continue;
+
+        // await нужен прямо здесь, внутри try: только так ошибка сервера попадет в catch
+        try {
+            // Сервер отвечает { correct, correctAnswer }. Результат пока только запоминаем:
+            // «Верно» и «Неверно» покажет showResults, когда будут проверены все ответы
+            item.result = await sendRequest('./api/check', { id: item.task.id, answer: item.input.value });
+        } catch (error) {
+            // Остальные ошибки (задача не найдена, нет связи с сервером) повтором не исправить:
+            // передаем их дальше в finishTest — там тест прервется
+            if (error.status !== 400) throw error;
+
+            // Код 400 — ответ не число («110 км/ч»). Попытка не потрачена: пишем под полем
+            // «Введите ответ числом, например 2,5», и ответ можно исправить
+            item.message.textContent = error.message;
+            invalidItems.push(item);
+        }
+    }
+
+    return invalidItems;
+}
+
+// Пишет под каждой задачей результат проверки: «Верно» или «Неверно. Правильный ответ: …».
+// Под задачей, ответ на которую не проверялся, пишет uncheckedText:
+// «Нет ответа» в итогах или «Не проверено», если тест прерван
+function showVerdicts(uncheckedText) {
+    for (const item of currentTest.items) {
+        if (item.result === null) {
+            item.message.textContent = uncheckedText;
+        } else if (item.result.correct) {
+            item.message.textContent = 'Верно';
+        } else {
+            item.message.textContent = `Неверно. Правильный ответ: ${item.result.correctAnswer} ${item.task.unit}`;
+        }
+    }
+}
+
+// Показывает итоги теста: у каждой задачи — верно ли она решена,
+// а под списком задач — количество правильных ответов, ошибок и затраченное время.
+// Принимает время прохождения теста в миллисекундах
+function showResults(time) {
+    // Итоги показываются, когда проверены все ответы. Значит, непроверенные задачи — это задачи без ответа
+    showVerdicts('Нет ответа');
+
+    // filter оставляет задачи, подходящие под условие, length — их количество
+    const correctCount = currentTest.items.filter((item) => item.result !== null && item.result.correct).length;
+    const emptyCount = currentTest.items.filter((item) => item.result === null).length;
+
+    // Ошибки — все задачи, решенные неправильно, вместе с задачами без ответа
+    const total = currentTest.items.length;
+    let errors = `Ошибок: ${total - correctCount}`;
+    if (emptyCount > 0) {
+        errors += ` (из них без ответа: ${emptyCount})`;
+    }
+
+    const results = document.getElementById('results');
+    results.textContent = '';
+    addElement(results, 'h3', 'Итоги');
+    addElement(results, 'p', `Правильных ответов: ${correctCount} из ${total}`);
+    addElement(results, 'p', errors);
+    addElement(results, 'p', `Затраченное время: ${formatTime(time)}`);
+
+    endTest();
+}
+
+// Заканчивает тест (после итогов или когда тест прерван): вместо кнопки «Завершить тест»
+// появляется кнопка «Новый тест». Поля для ответов уже выключены (см. finishTest)
+function endTest() {
+    document.getElementById('finish-test').hidden = true;
+    document.getElementById('new-test').hidden = false;
+}
+
+// Кнопка «Новый тест»: прячет задачи прошлого теста и снова показывает выбор тем.
+// Отмеченные темы и количество задач остаются, как были
+function showSetup() {
+    currentTest = null;
+    document.getElementById('test').hidden = true;
+    document.getElementById('setup').hidden = false;
+}
+
+// Записывает время в минутах и секундах: 205000 мс → «3 мин 25 с», 9000 мс → «9 с».
+// Сначала округляем до целых секунд, а уже потом делим на минуты и секунды:
+// иначе 119,6 с превратились бы в «1 мин 60 с» вместо «2 мин 0 с».
+// Единицы — сокращенно («мин», «с»), чтобы не склонять слова по числу
+function formatTime(milliseconds) {
+    const totalSeconds = Math.round(milliseconds / 1000);
+    const minutes = Math.floor(totalSeconds / 60); // Полные минуты
+    const seconds = totalSeconds % 60;             // % — остаток от деления: оставшиеся секунды
+
+    if (minutes === 0) return `${seconds} с`;
+    return `${minutes} мин ${seconds} с`;
 }
