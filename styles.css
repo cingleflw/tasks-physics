@@ -1,0 +1,563 @@
+/* ---------- Переменные ---------- */
+:root {
+    --bg: #f5f7fa;
+    --surface: #ffffff;
+    --surface-2: #f0f3f7;
+    --border: #d8dee7;
+    --border-strong: #b8c2d0;
+    --text: #1f2933;
+    --text-muted: #5b6774;
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --primary-soft: #e8efff;
+    --success: #15803d;
+    --success-soft: #e7f6ec;
+    --error: #c0392b;
+    --error-soft: #fdecea;
+    --warning: #a16207;
+    --warning-soft: #fdf6e3;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.1);
+    --shadow-lg: 0 10px 25px rgba(16, 24, 40, 0.1);
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* ---------- Сброс и база ---------- */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0 auto;
+    padding: 24px 20px 64px;
+    max-width: 960px;
+    font-family: var(--font);
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--text);
+    background: var(--bg);
+}
+
+/* Скрытые блоки (атрибут hidden) не должны перебиваться display из правил ниже */
+[hidden] {
+    display: none !important;
+}
+
+h1, h2, h3 {
+    line-height: 1.25;
+    margin: 1.6em 0 0.6em;
+    color: var(--text);
+}
+
+h1 {
+    font-size: 1.75rem;
+    margin-top: 0.4em;
+    padding-bottom: 0.4em;
+    border-bottom: 2px solid var(--primary);
+}
+
+h2 {
+    font-size: 1.3rem;
+}
+
+h3 {
+    font-size: 1.05rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+p {
+    margin: 0.6em 0;
+}
+
+a {
+    color: var(--primary);
+    text-decoration: none;
+}
+
+a:hover,
+a:focus-visible {
+    text-decoration: underline;
+}
+
+/* ---------- Формы ---------- */
+label {
+    display: block;
+    margin: 10px 0;
+    font-size: 0.95rem;
+    color: var(--text-muted);
+}
+
+input,
+select,
+textarea,
+button {
+    font: inherit;
+    color: inherit;
+}
+
+input[type="text"],
+input[type="number"],
+input:not([type]),
+select,
+textarea {
+    display: inline-block;
+    padding: 8px 10px;
+    margin-top: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+input:not([type]):focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+input:disabled,
+textarea:disabled,
+select:disabled {
+    background: var(--surface-2);
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+textarea {
+    display: block;
+    width: 100%;
+    max-width: 640px;
+    resize: vertical;
+    min-height: 72px;
+    font-family: var(--font);
+}
+
+/* Чекбоксы в списке тем */
+input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin: 0 4px 0 0;
+    vertical-align: -3px;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+/* ---------- Кнопки ---------- */
+button {
+    display: inline-block;
+    padding: 9px 18px;
+    margin: 6px 6px 6px 0;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #fff;
+    background: var(--primary);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.15s, transform 0.05s, box-shadow 0.15s;
+}
+
+button:hover:not(:disabled) {
+    background: var(--primary-hover);
+    box-shadow: var(--shadow);
+}
+
+button:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+button:disabled {
+    background: var(--border-strong);
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+/* «Новый тест» и «Завершить тест» — второстепенные */
+#finish-test,
+#new-test,
+#add-param {
+    background: var(--surface);
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+#finish-test:hover:not(:disabled),
+#new-test:hover:not(:disabled),
+#add-param:hover:not(:disabled) {
+    background: var(--primary-soft);
+}
+
+/* ---------- Сообщения ---------- */
+.error {
+    color: var(--error);
+    background: var(--error-soft);
+    padding: 8px 12px;
+    border-left: 4px solid var(--error);
+    border-radius: var(--radius-sm);
+}
+
+.warning {
+    color: var(--warning);
+    background: var(--warning-soft);
+    padding: 8px 12px;
+    border-left: 4px solid var(--warning);
+    border-radius: var(--radius-sm);
+    margin: 8px 0;
+}
+
+/* Пустые абзацы сообщений не должны занимать место */
+#topic-message:empty,
+#task-message:empty,
+#test-message:empty,
+#results:empty,
+#preview:empty {
+    display: none;
+}
+
+/* Сообщение о непроверенных ответах — выделяем, когда оно не пустое */
+#test-message:not(:empty) {
+    padding: 10px 14px;
+    margin: 12px 0;
+    background: var(--warning-soft);
+    color: var(--warning);
+    border-left: 4px solid var(--warning);
+    border-radius: var(--radius-sm);
+}
+
+/* ---------- Список тем (index.html) ---------- */
+#topics {
+    padding: 16px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+#topics h3 {
+    margin: 16px 0 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+}
+
+#topics h3:first-child {
+    margin-top: 0;
+}
+
+#topics label {
+    display: inline-block;
+    margin: 4px 16px 4px 0;
+    color: var(--text);
+    cursor: pointer;
+}
+
+#topics label:hover {
+    color: var(--primary);
+}
+
+/* ---------- Блок настройки теста ---------- */
+#setup {
+    margin-bottom: 24px;
+}
+
+#setup > p {
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+#task-count {
+    width: 90px;
+    margin-left: 6px;
+}
+
+/* ---------- Тест ---------- */
+#test {
+    margin-top: 8px;
+}
+
+#task-list {
+    list-style: none;
+    counter-reset: task;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 16px;
+}
+
+#task-list > li {
+    counter-increment: task;
+    position: relative;
+    padding: 16px 20px 16px 60px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+/* Номер задачи — кружком слева */
+#task-list > li::before {
+    content: counter(task);
+    position: absolute;
+    top: 16px;
+    left: 18px;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--primary);
+    background: var(--primary-soft);
+    border-radius: 50%;
+}
+
+#task-list > li h3 {
+    margin: 0 0 6px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+#task-list > li p {
+    margin: 0 0 10px;
+}
+
+/* Длинные «токены» вроде Дж/(кг·°C) и Ом·мм²/м переносим, только если не влезают */
+#task-list > li p,
+#task-list > li label {
+    overflow-wrap: anywhere;
+    hyphens: auto;
+}
+
+#task-list > li label {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0 0;
+    color: var(--text);
+    font-weight: 600;
+}
+
+#task-list > li input[type="text"] {
+    flex: 1 1 180px;
+    max-width: 240px;
+    margin-top: 0;
+}
+
+/* Сообщение под задачей: «Верно», «Неверно…», «Нет ответа» */
+#task-list > li p:last-child:not(:first-child) {
+    margin: 6px 0 0;
+    font-size: 0.92rem;
+    min-height: 0;
+}
+
+/* ---------- Итоги ---------- */
+#results {
+    margin-top: 24px;
+    padding: 20px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 5px solid var(--primary);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+}
+
+#results h3 {
+    margin-top: 0;
+}
+
+#results p {
+    margin: 6px 0;
+    font-size: 1.05rem;
+}
+
+#results p:nth-child(2) {
+    font-weight: 700;
+    color: var(--primary);
+    font-size: 1.2rem;
+}
+
+/* ---------- Предпросмотр в конструкторе ---------- */
+#preview {
+    margin-top: 20px;
+}
+
+#preview h3 {
+    margin-top: 20px;
+}
+
+#preview ol {
+    padding-left: 22px;
+}
+
+#preview ol li {
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+#preview ol li div {
+    margin-top: 6px;
+    font-weight: 700;
+    color: var(--success);
+}
+
+pre {
+    padding: 14px 16px;
+    background: #1e2430;
+    color: #e6edf3;
+    border-radius: var(--radius);
+    overflow-x: auto;
+    max-width: 100%;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    box-shadow: var(--shadow);
+}
+
+/* ---------- Конструктор: строки параметров ---------- */
+.param-row {
+    padding: 12px 16px;
+    margin: 10px 0;
+    max-width: 640px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--primary);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow);
+}
+
+.param-row label {
+    display: inline-block;
+    margin: 4px 14px 4px 0;
+}
+
+.param-row .param-range,
+.param-row .param-choices {
+    margin: 8px 0 0;
+}
+
+.param-row .param-range input {
+    width: 90px;
+}
+
+.param-row textarea {
+    max-width: 100%;
+}
+
+/* ---------- Подсказки ---------- */
+.hint {
+    max-width: 640px;
+    margin: 6px 0 14px;
+    padding: 10px 14px;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border-left: 3px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+}
+
+/* ---------- Ссылка «К тесту» / «Конструктор» ---------- */
+body > p:first-of-type {
+    font-size: 0.9rem;
+}
+
+/* ---------- Адаптивность ---------- */
+@media (max-width: 640px) {
+    body {
+        padding: 16px 12px 48px;
+        font-size: 15px;
+    }
+
+    h1 {
+        font-size: 1.4rem;
+    }
+
+    #task-list > li {
+        padding: 14px;
+    }
+
+    /* На узком экране номер задачи уходит в строку заголовка */
+    #task-list > li::before {
+        position: static;
+        display: inline-flex;
+        margin-bottom: 6px;
+    }
+
+    #task-list > li label {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    #task-list > li input[type="text"] {
+        flex-basis: 100%;
+        max-width: none;
+        width: 100%;
+    }
+
+    button {
+        width: 100%;
+        margin: 6px 0;
+    }
+
+    #setup > p {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .param-row label {
+        display: block;
+        margin-right: 0;
+    }
+}
+
+/* ---------- Печать ---------- */
+@media print {
+    body {
+        max-width: none;
+        padding: 0;
+        background: #fff;
+    }
+
+    button,
+    #setup,
+    a {
+        display: none !important;
+    }
+
+    #task-list > li,
+    #results {
+        box-shadow: none;
+        border: 1px solid #ccc;
+        break-inside: avoid;
+    }
+
+    pre {
+        background: #f4f4f4;
+        color: #000;
+        border: 1px solid #ccc;
+    }
+}

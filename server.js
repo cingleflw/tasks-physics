@@ -36,7 +36,8 @@ const STATIC_FILES = {
     '/main.js': { file: 'main.js', type: 'text/javascript; charset=utf-8' },
     '/api.js': { file: 'api.js', type: 'text/javascript; charset=utf-8' },
     '/constructor.html': { file: 'constructor.html', type: 'text/html; charset=utf-8' },
-    '/constructor.js': { file: 'constructor.js', type: 'text/javascript; charset=utf-8' }
+    '/constructor.js': { file: 'constructor.js', type: 'text/javascript; charset=utf-8' },
+    '/styles.css': { file: 'styles.css', type: 'text/css; charset=utf-8' }
 };
 
 // Выданные задачи: номер задачи → { topicId, taskId, params }.
