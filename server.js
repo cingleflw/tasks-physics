@@ -37,7 +37,14 @@ const STATIC_FILES = {
     '/api.js': { file: 'api.js', type: 'text/javascript; charset=utf-8' },
     '/constructor.html': { file: 'constructor.html', type: 'text/html; charset=utf-8' },
     '/constructor.js': { file: 'constructor.js', type: 'text/javascript; charset=utf-8' },
-    '/styles.css': { file: 'styles.css', type: 'text/css; charset=utf-8' }
+    '/styles.css': { file: 'styles.css', type: 'text/css; charset=utf-8' },
+
+    '/images/result-0.png': { file: 'images/result-0.png', type: 'image/png' },
+    '/images/result-1.png': { file: 'images/result-1.png', type: 'image/png' },
+    '/images/result-2.png': { file: 'images/result-2.png', type: 'image/png' },
+    '/images/result-3.png': { file: 'images/result-3.png', type: 'image/png' },
+    '/images/result-4.png': { file: 'images/result-4.png', type: 'image/png' },
+    '/images/result-5.png': { file: 'images/result-5.png', type: 'image/png' }
 };
 
 // Выданные задачи: номер задачи → { topicId, taskId, params }.

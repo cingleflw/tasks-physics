@@ -334,6 +334,69 @@ function showResults(time) {
     addElement(results, 'p', errors);
     addElement(results, 'p', `Затраченное время: ${formatTime(time)}`);
 
+    // === НОВЫЙ БЛОК: Расчет процента и вывод картинки с текстом ===
+    const percent = Math.round((correctCount / total) * 100);
+    
+    // Вычисляем индекс от 0 до 5 (всего 6 диапазонов)
+    let imageIndex = Math.floor(percent / (100 / 6));
+    if (imageIndex > 5) imageIndex = 5;
+
+    // Настройки для каждого из 6 диапазонов.
+    const resultLevels = [
+        {
+            image: 'result-0.png',
+            message: 'Ой! Кажется, физика пока дается нелегко. Стоит повторить формулы и попробовать еще раз!'
+        },
+        {
+            image: 'result-1.png',
+            message: 'Есть над чем поработать. Вы на верном пути, но стоит быть внимательнее с вычислениями.'
+        },
+        {
+            image: 'result-2.png',
+            message: 'Неплохой результат! Вы усвоили половину материала. Осталось подтянуть оставшиеся темы.'
+        },
+        {
+            image: 'result-3.png',
+            message: 'Хороший результат! Вы уверенно справляетесь с большинством задач. Продолжайте в том же духе.'
+        },
+        {
+            image: 'result-4.png',
+            message: 'Отлично! Вы отлично знаете материал и решаете задачи почти без ошибок.'
+        },
+        {
+            image: 'result-5.png',
+            message: 'Превосходно! Максимальная точность. Вы настоящий знаток физики!'
+        }
+    ];
+
+    const currentLevel = resultLevels[imageIndex];
+
+    // Создаем контейнер для картинки и текста
+    const feedbackContainer = document.createElement('div');
+    feedbackContainer.className = 'result-feedback';
+
+    // 1. Общий заголовок (он одинаков для всех)
+    const title = document.createElement('h3');
+    title.textContent = 'Ваш результат:';
+    title.className = 'result-feedback-title';
+    
+    // 2. Картинка
+    const img = document.createElement('img');
+    img.src = `./images/${currentLevel.image}`;
+    img.alt = `Результат: ${percent}%`;
+    img.className = 'result-image';
+
+    // 3. Текст для конкретного результата
+    const text = document.createElement('p');
+    text.textContent = currentLevel.message;
+    text.className = 'result-feedback-text';
+
+    // Собираем всё вместе
+    feedbackContainer.append(title, img, text);
+    
+    // Вставляем в блок итогов
+    results.append(feedbackContainer);
+
     endTest();
 }
 
