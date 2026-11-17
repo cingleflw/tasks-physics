@@ -3,15 +3,25 @@
 // со случайными числами. Файл подключается на сервере (server.js): сервер создает
 // задачи и проверяет ответы, поэтому браузеру этот файл не нужен и не отдается.
 // Формулы ответов хранятся в шаблонах tasks/*.json — их сервер тоже не отдает.
+// Этот файл подключают server.js и validator.js: validator.js по шаблону из конструктора создает пробные задачи.
+// Главная функция — generateTask в конце файла: по шагам 1–3 она вызывает функции, записанные выше
 
 // Случайное целое число от min до max включительно
+// function объявляет функцию: randomInt — ее имя, min и max — параметры (их передают при вызове: randomInt(2, 6))
 function randomInt(min, max) {
     // Math.random() дает число от 0 до 1. Умножаем на количество вариантов и округляем вниз.
+    // Точнее, Math.random() дает число от 0 до 0,999…: ровно 1 не выпадает никогда.
+    // Например, randomInt(2, 6): вариантов 6 - 2 + 1 = 5, Math.random() * 5 — число от 0 до 4,999…,
+    // Math.floor округляет его вниз до 0, 1, 2, 3 или 4, а + min сдвигает к началу диапазона: 2…6.
+    // return возвращает готовое число туда, где функцию вызвали
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 // Случайный элемент массива
 function pickRandom(array) {
+    // array.length — количество элементов, а array[номер] — элемент с этим номером. Номера (индексы)
+    // начинаются с 0, поэтому последний номер — array.length - 1 (у 3 элементов: 0, 1, 2).
+    // Так выбирается один из вариантов choices (см. randomParam)
     return array[randomInt(0, array.length - 1)];
 }
 
@@ -21,18 +31,27 @@ function pickRandom(array) {
 // местами со случайным элементом, стоящим не дальше него (может выпасть и он сам).
 // Так все порядки элементов получаются равновероятными
 function shuffle(array) {
+    // const — имя, которому значение присваивается один раз: другой массив в result записать нельзя,
+    // а переставлять элементы внутри этого массива можно — этим и занимается цикл ниже
     const result = [...array]; // Копия массива (... — «разворот» элементов в новый массив)
+    // Цикл for из трех частей: let i = ... — начало (let — переменная, которую можно менять),
+    // i > 0 — условие, при котором цикл продолжается, i-- — после каждого шага уменьшаем i на 1.
+    // Так i проходит номера от последнего до 1: элементу с номером 0 меняться уже не с кем
     for (let i = result.length - 1; i > 0; i--) {
-        const j = randomInt(0, i);
+        const j = randomInt(0, i); // Случайный номер от 0 до i (может выпасть и само i)
+        // Деструктуризация: справа массив из двух элементов [result[j], result[i]], а слева он
+        // «раскладывается» обратно по местам — так два элемента меняются без лишней переменной
         [result[i], result[j]] = [result[j], result[i]]; // Меняем местами i-й и j-й элементы
     }
-    return result;
+    return result; // Перемешанная копия, а исходный array остался прежним
 }
 
 // Убирает погрешность вычислений с дробными числами.
 // Компьютер хранит дроби неточно: 0.1 + 0.2 = 0.30000000000000004.
 // Оставляем 12 значащих цифр — «хвост» пропадает, и получается 0.3
 function cleanNumber(value) {
+    // toPrecision(12) записывает число текстом с 12 значащими цифрами: 0.30000000000000004 → "0.300000000000".
+    // parseFloat превращает текст обратно в число, и лишние нули пропадают: 0.3
     return parseFloat(value.toPrecision(12));
 }
 
@@ -42,17 +61,26 @@ function cleanNumber(value) {
 //   { "choices": [ ... ] }                — один из перечисленных вариантов
 //                                           (число или объект, например вещество с его плотностью)
 function randomParam(spec) {
+    // Есть список вариантов choices — выбираем из него. У диапазона min–max этого поля нет:
+    // spec.choices равно undefined, а if считает undefined за «нет» и пропускает блок в { }
     if (spec.choices) {
+        // return сразу завершает функцию: код ниже выполняется только для диапазонов min–max
         return pickRandom(spec.choices);
     }
 
+    // ?? — «если слева ничего нет (undefined или null), взять значение справа»
     const step = spec.step ?? 1; // Если шаг не указан, он равен 1
 
     // Сколько целых шагов помещается в диапазоне.
     // cleanNumber убирает погрешность: (1 - 0.3) / 0.1 = 6.999999999999999 → 7,
     // а Math.floor отбрасывает неполный шаг, чтобы число не вышло за max
+    // Например, { "min": 1, "max": 10, "step": 4 }: (10 - 1) / 4 = 2.25 → 2 шага,
+    // и выпадает 1, 5 или 9 (до 10 еще одного шага не хватает)
     const stepsCount = Math.floor(cleanNumber((spec.max - spec.min) / step));
 
+    // К min прибавляем случайное количество шагов — от 0 до stepsCount:
+    // при min 0.5, max 3, step 0.5 шагов 5, и выпадает 0.5, 1, 1.5, 2, 2.5 или 3.
+    // cleanNumber и здесь убирает погрешность: 0.1 * 3 = 0.30000000000000004 → 0.3
     return cleanNumber(spec.min + step * randomInt(0, stepsCount));
 }
 
@@ -61,14 +89,21 @@ function randomParam(spec) {
 // нельзя было добраться до встроенных свойств JavaScript (например, constructor).
 // Если значения с таким именем нет, возвращает undefined.
 function getValue(values, name) {
+    // split режет строку по точкам и дает список частей: "material.ro" → ["material", "ro"], "v" → ["v"]
     const parts = name.split('.');
+    // || — «или», ! — «не». Ничего не находим, если точек больше одной ("a.b.c")
+    // или у values нет собственного свойства с таким именем
     if (parts.length > 2 || !Object.hasOwn(values, parts[0])) return undefined;
 
-    const value = values[parts[0]];
-    if (parts.length === 1) return value;
+    const value = values[parts[0]];       // Квадратные скобки — свойство по имени: values["material"]
+    if (parts.length === 1) return value; // === — «равно»: имя без точки ("v"), значение уже найдено
 
     // Поле можно взять только у объекта — варианта из choices, например material.ro
-    if (typeof value !== 'object' || value === null) return undefined;
+    // typeof дает тип значения текстом: 'number', 'string', 'object' и т. д. У null тип тоже
+    // 'object' (старая особенность JavaScript), поэтому null проверяем отдельно
+    if (typeof value !== 'object' || value === null) return undefined; // !== — «не равно»
+    // Тернарный оператор «условие ? A : B» дает A, если условие верно, иначе B:
+    // есть у варианта свое поле (например, ro) — берем его значение, нет — undefined
     return Object.hasOwn(value, parts[1]) ? value[parts[1]] : undefined;
 }
 
@@ -78,56 +113,112 @@ function getValue(values, name) {
 // затем проверяем, что остались только цифры, точка, скобки и знаки + - * /,
 // и только такую безопасную строку выполняем с помощью Function.
 function evaluate(formula, values) {
+    // replace находит в формуле все имена величин и заменяет каждое тем, что вернет функция (name) => { ... }.
+    // Это стрелочная функция — короткая запись функции; name — найденное имя целиком: "v" или "material.ro".
+    // Регулярное выражение (шаблон для поиска в тексте) записано между / / и читается по частям:
+    //   \b        — граница слова: слева от имени не латинская буква, не цифра и не _ (или начало строки).
+    //               Поэтому e в числе 1e-7 за имя не считается: слева от нее цифра 1;
+    //   [A-Za-z_] — первый знак имени: латинская буква или _ (с цифры начинаются числа, а не имена);
+    //   \w*       — дальше сколько угодно латинских букв, цифр и _: q1, m_1. Русских букв \w не знает;
+    //   (\.\w+)?  — необязательные точка и имя поля, как в material.ro: \. — сама точка,
+    //               \w+ — имя поля (+ — «один знак или больше», а * выше — «сколько угодно, даже ни одного»),
+    //               скобки объединяют точку и поле, а ? после скобок означает «может и не быть»;
+    //   g         — искать все имена, а не только первое.
+    // Например, в "material.ro * V" найдутся "material.ro" и "V"
     const expression = formula.replace(/\b[A-Za-z_]\w*(\.\w+)?/g, (name) => {
-        const value = getValue(values, name);
+        const value = getValue(values, name); // Например, 12 для "v" или undefined, если такой величины нет
         // Например, в варианте записали "ro: 8,9 г/см³" — с единицами это уже текст, а не число
         if (typeof value === 'string') {
+            // throw «выбрасывает» ошибку: evaluate сразу прекращается, и ошибка передается функциям,
+            // которые вызвали evaluate, пока ее не поймает try/catch. В тесте сервер ответит «Ошибка на сервере»
+            // (handleRequest в server.js), а в конструкторе учитель увидит этот текст (tryTemplate в validator.js).
+            // new Error(текст) создает объект ошибки с этим текстом — потом его читают как error.message
+            // В строке в обратных кавычках `...` вместо ${name} подставляется значение name
             throw new Error(`Величина "${name}" записана текстом ("${value}"), а в формуле нужно число — уберите единицы измерения`);
         }
+        // Не число: такой величины нет (undefined, например опечатка "vv") или это весь вариант
+        // без поля ("material" вместо "material.ro")
         if (typeof value !== 'number') {
+            // Например: «Неизвестная величина "vv" в формуле "vv * t"»
             throw new Error(`Неизвестная величина "${name}" в формуле "${formula}"`);
         }
+        // Без скобок формула "v-t" при v = 5 и t = -2 превратилась бы в "5--2", а это ошибка:
+        // -- в JavaScript — отдельный знак (уменьшить на 1)
         return `(${value})`; // Скобки нужны для отрицательных чисел: 5 - (-2)
     });
 
     // Буква e допустима только внутри чисел вида 1e-7 — все имена к этому моменту уже заменены
+    // Такую запись дает и сама подстановка: число 0.0000001 JavaScript пишет как "1e-7",
+    // а 10 в 21-й степени — как "1e+21".
+    // Регулярное выражение по частям:
+    //   ^ и $ — начало и конец строки: проверяется вся строка целиком;
+    //   [...] — один знак из набора: \d — цифра, \s — пробел (и другие пробельные знаки), точка
+    //           (внутри [ ] это обычная точка), буква e, знаки + - * / и скобки. Минус записан как \-,
+    //           потому что внутри [ ] знак - обозначает диапазон, как в A-Z. Знак / внутри [ ] —
+    //           просто деление: регулярное выражение он не заканчивает;
+    //   *     — таких знаков сколько угодно подряд (пустая строка тоже подходит — ее отсеет Number.isFinite ниже).
+    // test отвечает true или false, а ! переворачивает ответ: ошибка, если в строке нашелся другой знак
     if (!/^[\d\s.e+\-*/()]*$/.test(expression)) {
-        throw new Error(`Недопустимые символы в формуле "${formula}"`);
+        throw new Error(`Недопустимые символы в формуле "${formula}"`); // Например, осталось имя с русскими буквами
     }
 
+    // new Function создает функцию из текста ее тела: "return (12) * (3);".
+    // Получается то же, что function () { return (12) * (3); }. Переменных evaluate
+    // (values, formula) такая функция не видит — у нее есть только числа и знаки из строки
     const calculate = new Function(`return ${expression};`);
-    const result = calculate();
+    const result = calculate(); // Вызываем созданную функцию: (12) * (3) → 36
 
+    // Number.isFinite дает true только для обычного (конечного) числа. Деление на ноль дает Infinity или -Infinity
+    // (бесконечность), 0 / 0 — NaN («не число»), а пустая формула — undefined
     if (!Number.isFinite(result)) {
-        throw new Error(`Формула "${formula}" дала результат ${result}`);
+        throw new Error(`Формула "${formula}" дала результат ${result}`); // Например, «... дала результат Infinity»
     }
-    return cleanNumber(result);
+    return cleanNumber(result); // Результат без погрешности: 0.30000000000000004 → 0.3
 }
 
 // Записывает число по-русски: десятичная запятая и пробелы между разрядами
 // у больших чисел (2.5 → "2,5", 42000 → "42 000", но 4200 → "4200", как в учебниках)
 function formatNumber(value) {
+    // toLocaleString записывает число по правилам языка: 'ru-RU' — русский язык (Россия).
+    // maximumFractionDigits: 10 — не больше 10 знаков после запятой: 1 / 3 → "0,3333333333".
+    // useGrouping: 'min2' — разряды разделяются, только если в целой части не меньше 5 цифр:
+    // 4200 → "4200", 42000 → "42 000", 1234567 → "1 234 567".
+    // Между разрядами стоит неразрывный пробел (код U+00A0): число не разорвется при переносе строки.
+    // Ответ ученика с таким пробелом сервер тоже поймет (см. parseUserAnswer в server.js)
     return value.toLocaleString('ru-RU', { maximumFractionDigits: 10, useGrouping: 'min2' });
 }
 
 // Подставляет значения в текст условия вместо {имя} или {имя.поле}:
 // "Ехал {t} ч" → "Ехал 3 ч", "Деталь из {material.name}" → "Деталь из меди"
 function fillText(text, values) {
+    // replace находит в тексте все подстановки {…} и заменяет каждую тем, что вернет функция.
+    // Регулярное выражение по частям:
+    //   \{ и \} — сами фигурные скобки: \ показывает, что это обычный знак, а не число повторов,
+    //             как в \d{5,} («5 цифр или больше»);
+    //   [^{}]+  — один или больше знаков, кроме { и } (^ в начале [ ] означает «кроме»);
+    //   ( )     — запоминают текст между фигурными скобками: функция получает его вторым параметром name;
+    //   g       — заменить все подстановки, а не только первую.
+    // placeholder — вся найденная подстановка, например "{t}", а name — текст внутри нее: "t"
     return text.replace(/\{([^{}]+)\}/g, (placeholder, name) => {
-        const value = getValue(values, name);
-        if (typeof value === 'number') return formatNumber(value);
-        if (typeof value === 'string') return value;
+        const value = getValue(values, name);                      // {t} → 3, {material.name} → "меди"
+        if (typeof value === 'number') return formatNumber(value); // Число пишем по-русски: 2.5 → "2,5"
+        if (typeof value === 'string') return value;               // Текст (название вещества) — как есть
+        // Иначе такой величины нет (опечатка в имени) или это весь вариант без поля, например {material}
         throw new Error(`Неизвестная величина ${placeholder} в тексте задачи`);
     });
 }
 
 // Шаг 1. Случайные значения всех параметров шаблона
 function generateParams(template) {
-    const params = {};
+    const params = {}; // Пустой объект: сюда соберем случайные значения
+    // Object.entries превращает объект в список пар [имя, значение]:
+    // { "v": {...}, "t": {...} } → [["v", {...}], ["t", {...}]].
+    // for...of перебирает пары по очереди, а [name, spec] сразу раскладывает пару на две
+    // переменные (деструктуризация): name = "v", spec = { "min": 40, "max": 120, "step": 10 }
     for (const [name, spec] of Object.entries(template.params)) {
-        params[name] = randomParam(spec);
+        params[name] = randomParam(spec); // Например, params["v"] = 110: в [ ] — имя поля из переменной name
     }
-    return params;
+    return params; // Например, { v: 110, t: 2 } — их сохранит задача (см. generateTask)
 }
 
 // Шаг 2. Все величины задачи: случайные параметры + вычисляемые (derived).
@@ -135,32 +226,40 @@ function generateParams(template) {
 // Пример: скорость v и время t выбраны случайно, а путь s = v * t вычислен.
 // В задаче «найдите скорость по пути и времени» ответ тогда всегда «красивый».
 function computeValues(template, params) {
+    // { ...params } — новый объект со всеми полями params (... «разворачивает» объект, как массив в shuffle).
+    // В params должны остаться только случайные значения: задача хранит их в поле params (см. generateTask)
     const values = { ...params }; // Копия, чтобы не изменить сами params
+    // Если вычисляемых величин в шаблоне нет, template.derived равно undefined, и ?? дает пустой объект {}:
+    // цикл не выполнится ни разу. Пары [имя, формула] идут в том порядке, в каком записаны в JSON
     for (const [name, formula] of Object.entries(template.derived ?? {})) {
-        values[name] = evaluate(formula, values);
+        values[name] = evaluate(formula, values); // Например, values["s"] = 110 * 2 = 220 по формуле "v * t"
     }
-    return values;
+    return values; // Например, { v: 110, t: 2, s: 220 }
 }
 
 // Сколько знаков после запятой оставлять в ответе.
 // Если precision в шаблоне не указан — 2 знака
 function getPrecision(template) {
+    // ?? заменяет только отсутствующее значение (undefined или null). С || вышло бы иначе:
+    // precision 0 (ответ — целое число) превратился бы в 2, потому что 0 || 2 дает 2
     return template.precision ?? 2;
 }
 
 // Шаг 3. Правильный ответ, округленный до precision знаков после запятой
 function computeAnswer(template, values) {
-    const answer = evaluate(template.answer, values);
-    const factor = 10 ** getPrecision(template);
+    const answer = evaluate(template.answer, values); // Точный ответ по формуле шаблона, например 4.35
+    const factor = 10 ** getPrecision(template);      // ** — степень: 10 ** 2 = 100, а при precision 0 — 1
 
     // Сдвигаем запятую, округляем до целого и сдвигаем обратно: 4.35 → 43.5 → 44 → 4.4.
     // cleanNumber нужен и здесь: 0.145 * 100 = 14.499999999999998, и без него
     // при precision = 2 получилось бы 0.14 вместо 0.15
+    // Math.round округляет до ближайшего целого, а ровно половину — в большую сторону:
+    // 43.5 → 44, но -43.5 → -43 (у отрицательных чисел большая сторона — ближе к нулю)
     const rounded = Math.round(cleanNumber(answer * factor)) / factor;
 
     // Math.round(-0.3) дает -0 («минус ноль»), и formatNumber записал бы ответ как "-0".
     // -0 === 0 считается верным, поэтому для любого нуля возвращаем обычный 0
-    return rounded === 0 ? 0 : rounded;
+    return rounded === 0 ? 0 : rounded; // Тернарный оператор: ноль — обычный 0, иначе само rounded
 }
 
 // Создает конкретную задачу из шаблона.
@@ -168,9 +267,12 @@ function computeAnswer(template, values) {
 // в условии задачи: по номеру темы, номеру шаблона и params задачу можно
 // воспроизвести и заново вычислить правильный ответ.
 function generateTask(template, topicId) {
-    const params = generateParams(template);
-    const values = computeValues(template, params);
+    const params = generateParams(template);        // Шаг 1, например { v: 110, t: 2 }
+    const values = computeValues(template, params); // Шаг 2, например { v: 110, t: 2, s: 220 }
 
+    // Готовая задача — объект: слева от двоеточия название поля, справа его значение.
+    // Шаг 3 (правильный ответ) выполняется прямо в поле answer. Задачи создают generateUniqueTask
+    // в server.js (для теста) и validator.js (пробные задачи из конструктора, там topicId = null)
     return {
         topicId: topicId,                           // Тема, например "7_mechanics"
         taskId: template.id,                        // Номер шаблона внутри темы
@@ -184,14 +286,16 @@ function generateTask(template, topicId) {
 // Делаем функции доступными для server.js и validator.js.
 // В Node.js каждый файл — отдельный модуль: другой файл получает только то,
 // что перечислено в module.exports, когда подключает его через require('./generator.js')
+// Запись { shuffle, ... } — сокращение для { shuffle: shuffle, ... }: поле называется так же, как функция.
+// Остальные функции (randomInt, pickRandom, randomParam, getValue, generateParams) нужны только внутри файла
 module.exports = {
-    shuffle,
-    cleanNumber,
-    evaluate,
-    formatNumber,
-    fillText,
-    computeValues,
-    getPrecision,
-    computeAnswer,
-    generateTask
+    shuffle,       // Тасовать колоды шаблонов: pickTemplates в server.js
+    cleanNumber,   // Сравнивать ответы без погрешности: isAnswerCorrect в server.js
+    evaluate,      // Точный (неокругленный) ответ: handleCheck в server.js, tryTemplate в validator.js
+    formatNumber,  // Числа вида "2,5": правильный ответ в handleCheck (server.js), примеры в validator.js
+    fillText,      // Текст условия с подставленными числами: findHiddenParam в validator.js
+    computeValues, // Все величины по сохраненным params: handleCheck в server.js и validator.js
+    getPrecision,  // Точность ответа для сравнения: handleCheck в server.js
+    computeAnswer, // Округленный правильный ответ: handleCheck в server.js и validator.js
+    generateTask   // Новая задача: generateUniqueTask в server.js, пробные задачи в validator.js
 };

@@ -1,4 +1,5 @@
 // Функция sendRequest (запрос к серверу) — из файла api.js: он подключается раньше этого файла
+// Этот файл — интерфейс страницы теста index.html: список тем, задачи с полями для ответов и итоги
 
 // Текущий тест: { items: [...], startTime }, а null — теста нет.
 // items — задачи теста; для каждой задачи запоминаем:
@@ -7,13 +8,24 @@
 //   message — абзац под полем: сюда пишутся просьба ввести число и результат проверки,
 //   result  — ответ сервера { correct, correctAnswer } или null, пока ответ не проверен.
 // startTime — время начала теста (Date.now(): миллисекунды, прошедшие с 1 января 1970 года)
+// let (в отличие от const) позволяет потом записать в переменную другое значение:
+// showTasks записывает сюда новый тест, а showSetup — снова null.
+// Переменная объявлена вне функций, поэтому ее видят все функции этого файла
 let currentTest = null;
 
+// main.js подключается в <head> страницы index.html — раньше, чем браузер прочитает <body>,
+// поэтому кнопок и блока topics в этот момент на странице еще нет.
+// Событие DOMContentLoaded наступает, когда браузер прочитал всю страницу.
+// document — вся страница. addEventListener('событие', функция) — «когда случится событие, вызови функцию».
+// () => { ... } — функция-стрелка: короткая запись функции без имени
 document.addEventListener('DOMContentLoaded', () => {
     // Назначаем кнопкам их действия
+    // getElementById находит элемент страницы по его id (в index.html: <button id="start-test">).
+    // При щелчке (click) по кнопке «Начать тест» браузер вызовет функцию startSelectedTest.
+    // Имя функции записано без скобок: сейчас мы ее не вызываем, а только передаем браузеру
     document.getElementById('start-test').addEventListener('click', startSelectedTest);
-    document.getElementById('finish-test').addEventListener('click', finishTest);
-    document.getElementById('new-test').addEventListener('click', showSetup);
+    document.getElementById('finish-test').addEventListener('click', finishTest); // Кнопка «Завершить тест»
+    document.getElementById('new-test').addEventListener('click', showSetup);     // Кнопка «Новый тест»
 
     // Список тем загружается с сервера: так на странице появляются
     // и темы, добавленные через конструктор
@@ -21,87 +33,113 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Загружает с сервера список тем и показывает темы с галочками, разбитые по классам
+// async — функция асинхронная: внутри нее можно словом await ждать ответа сервера,
+// и страница при этом не «замирает»
 async function showTopics() {
     // Блок <div id="topics"> из index.html, в который добавляются темы
+    // const — переменная, в которую потом нельзя записать другое значение (в отличие от let)
     const container = document.getElementById('topics');
 
+    // try { ... } catch (error) { ... }: если внутри try случится ошибка, остаток try пропускается
+    // и выполняется catch — так страница покажет сообщение, а не сломается молча
     try {
         // Сервер присылает { topics: [ { id, grade, title, count }, ... ] }.
         // Темы уже отсортированы: по классу, внутри класса — по алфавиту
+        // Запрос GET /api/topics обрабатывает handleTopicList в server.js. Если сервер недоступен,
+        // sendRequest «бросит» ошибку (throw): прервется и передаст ошибку сюда — выполнение перейдет в catch
         const result = await sendRequest('./api/topics');
 
         container.textContent = ''; // Убираем надпись «Загрузка списка тем…»
         let grade = null;           // Класс, заголовок которого выведен последним
 
+        // for...of перебирает элементы списка по очереди. topic — очередная тема, например
+        // { id: "7_mechanics", grade: 7, title: "Механическое движение", count: 6 }
         for (const topic of result.topics) {
             // Тему без задач (только что созданную в конструкторе) ученику не показываем
-            if (topic.count === 0) continue;
+            // continue — пропустить остаток цикла и сразу перейти к следующей теме.
+            // if без фигурных скобок { } относится только к одной команде — той, что записана сразу после условия
+            if (topic.count === 0) continue; // === — «равно»: совпадают и значение, и тип ("6" === 6 — false)
 
             // Начался следующий класс — выводим заголовок, например «7 класс»
+            // !== — «не равно» (строгое сравнение). У первой темы grade еще null — заголовок выводится и для нее
             if (topic.grade !== grade) {
+                // createElement создает новый элемент <h3>; на странице он появится только после append
                 const heading = document.createElement('h3');
+                // Строка в обратных кавычках `...` — шаблонная: вместо ${topic.grade}
+                // подставляется значение, и получается «7 класс»
                 heading.textContent = `${topic.grade} класс`;
-                container.append(heading);
-                grade = topic.grade;
+                container.append(heading); // append добавляет заголовок в конец блока topics
+                grade = topic.grade;       // Запоминаем: заголовок этого класса уже выведен
             }
 
             // Галочка темы (checkbox). В value запоминаем номер темы —
             // его прочитает getSelectedTopicIds, когда нажмут «Начать тест»
             const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.value = topic.id;
+            checkbox.type = 'checkbox'; // Поле-галочка, как <input type="checkbox"> в HTML
+            checkbox.value = topic.id;  // Номер темы, например "7_mechanics" — имя файла tasks/7_mechanics.json
 
             // label связывает галочку с названием: щелчок по названию тоже ставит галочку.
             // Строку append вставляет как обычный текст (как textContent): даже если
             // в названии есть знаки < и >, браузер не примет их за HTML-теги
             const label = document.createElement('label');
-            label.append(checkbox, ` ${topic.title}`);
+            label.append(checkbox, ` ${topic.title}`); // Сначала галочка, затем пробел и название темы
 
             // Каждая тема — на своей строке
-            container.append(label, document.createElement('br'));
+            container.append(label, document.createElement('br')); // <br> — перенос строки
         }
 
         // Список загружен — теперь можно начинать тест
+        // disabled = false включает кнопку: в index.html она выключена атрибутом disabled
         document.getElementById('start-test').disabled = false;
-    } catch (error) {
+    } catch (error) { // error — ошибка, которую бросил sendRequest (см. api.js)
         // Например, нет связи с сервером: показываем текст ошибки вместо списка тем.
         // Кнопка «Начать тест» остается выключенной: выбирать не из чего
+        // console.error пишет ошибку в консоль браузера (инструменты разработчика: F12,
+        // на Mac — Cmd+Option+I) — по ней можно найти причину
         console.error(error);
+        // error.message — текст ошибки, например подсказка SERVER_HINT из api.js: «Нет связи с сервером…»
         container.textContent = `Ошибка: ${error.message}`;
     }
 }
 
 // Номера отмеченных тем, например ["7_mechanics", "8_Om"]
 function getSelectedTopicIds() {
+    // Пустой список для номеров отмеченных тем. const не мешает добавлять в список элементы:
+    // нельзя только записать в переменную другой список
     const ids = [];
     // querySelectorAll находит все отмеченные (:checked) галочки внутри блока topics
+    // Селектор записан как в CSS: #topics — элемент с id="topics", пробел — «где-то внутри него»,
+    // input:checked — поля input, в которых стоит галочка
     for (const checkbox of document.querySelectorAll('#topics input:checked')) {
-        ids.push(checkbox.value);
+        ids.push(checkbox.value); // push добавляет элемент в конец списка
     }
-    return ids;
+    return ids; // return возвращает результат тому, кто вызвал функцию (startSelectedTest)
 }
 
 // Читает количество задач из поля «Количество задач».
 // Возвращает целое число от 1 до 100 или null, если введено что-то другое.
 // Если в поле не число, браузер возвращает пустую строку, а Number('') = 0 — проверку это не пройдет
 function readTaskCount() {
+    // value — текст из поля <input id="task-count"> (всегда строка), Number превращает его в число: "10" → 10
     const count = Number(document.getElementById('task-count').value);
 
     // Нужно целое число от 1 до 100 — столько же разрешает сервер (server.js)
+    // Number.isInteger пропускает только целые числа: 2.5 и NaN («не число») не пройдут.
+    // ! — «не», || — «или»: null возвращается, если нарушено хотя бы одно условие
     if (!Number.isInteger(count) || count < 1 || count > 100) return null;
-    return count;
+    return count; // Все проверки пройдены
 }
 
 // Кнопка «Начать тест»: проверяет, что отмечены темы и введено количество задач, и запускает тест
 async function startSelectedTest() {
-    const topicIds = getSelectedTopicIds();
-    if (topicIds.length === 0) {
-        alert("Выберите хотя бы одну тему.");
-        return;
+    const topicIds = getSelectedTopicIds();   // Например ["7_mechanics", "8_Om"]
+    if (topicIds.length === 0) {              // length — длина списка; 0 — ни одна тема не отмечена
+        alert("Выберите хотя бы одну тему."); // alert показывает окно с сообщением и кнопкой «ОК»
+        return;                               // return без значения просто завершает функцию: тест не начинаем
     }
 
-    const count = readTaskCount();
-    if (count === null) {
+    const count = readTaskCount(); // Число от 1 до 100 или null
+    if (count === null) {          // null — в поле не целое число от 1 до 100
         alert("Введите количество задач — целое число от 1 до 100.");
         return;
     }
@@ -111,12 +149,14 @@ async function startSelectedTest() {
     // Когда задачи показаны, блок с кнопкой спрятан, пока не нажата кнопка «Новый тест»
     // (см. showTasks и showSetup)
     const button = document.getElementById('start-test');
-    button.disabled = true;
+    button.disabled = true; // По выключенной кнопке щелкнуть нельзя
+    // Ошибки startTest обрабатывает сама (показывает alert), поэтому catch здесь не нужен:
+    // try записан ради finally — кнопка снова включится, чем бы ни закончился запуск теста
     try {
-        await startTest(topicIds, count);
+        await startTest(topicIds, count); // await ждет, пока сервер пришлет задачи и они появятся на странице
     } finally {
         // finally выполняется в любом случае — и после успеха, и после ошибки
-        button.disabled = false;
+        button.disabled = false; // Снова включаем кнопку «Начать тест»
     }
 }
 
@@ -128,11 +168,14 @@ async function startTest(topicIds, count) {
     try {
         // Сервер присылает задачи без правильных ответов:
         // { tasks: [ { id, topicTitle, text, unit }, ... ] }
+        // Запрос POST /api/tasks обрабатывает handleTasks в server.js. Второй аргумент — данные
+        // для сервера, например { topicIds: ["7_mechanics", "8_Om"], count: 10 }
+        // { имя: значение, ... } — объект. topicIds: topicIds — поле topicIds, в нем значение переменной topicIds
         const test = await sendRequest('./api/tasks', { topicIds: topicIds, count: count });
-        showTasks(test.tasks);
+        showTasks(test.tasks); // Показываем полученные задачи на странице
     } catch (error) {
-        console.error(error);
-        alert(`Ошибка: ${error.message}`);
+        console.error(error);              // Подробности ошибки — в консоль браузера
+        alert(`Ошибка: ${error.message}`); // Например, «Ошибка: В теме "…" пока нет задач»
     }
 }
 
@@ -142,28 +185,31 @@ async function startTest(topicIds, count) {
 // textContent вставляет текст как есть: знаки < и > в условии задачи не станут HTML-тегами.
 // (Такая же функция есть в constructor.js — у конструктора своя страница)
 function addElement(parent, tag, text) {
-    const element = document.createElement(tag);
-    element.textContent = text;
-    parent.append(element);
-    return element;
+    const element = document.createElement(tag); // Новый элемент, например <p>, — пока не на странице
+    element.textContent = text;                  // Текст внутри элемента
+    parent.append(element);                      // Добавляем в конец parent — теперь элемент на странице
+    return element;                              // Возвращаем элемент: в него можно добавить что-то еще
 }
 
 // Показывает задачи теста на странице: у каждой задачи — тема, условие и поле для ответа.
 // Выбор тем на время теста прячется, и начинается отсчет времени
 function showTasks(tasks) {
-    const list = document.getElementById('task-list');
+    const list = document.getElementById('task-list'); // Нумерованный список <ol id="task-list"> из index.html
     // Убираем задачи, итоги и сообщения прошлого теста
+    // Пустая строка в textContent удаляет все, что было внутри элемента
     list.textContent = '';
-    document.getElementById('results').textContent = '';
-    document.getElementById('test-message').textContent = '';
+    document.getElementById('results').textContent = '';      // Итоги прошлого теста
+    document.getElementById('test-message').textContent = ''; // Сообщение под задачами
 
-    const items = [];
+    const items = []; // Задачи вместе с их полями и абзацами — потом это станет currentTest.items
+    // task — задача от сервера, например { id: "…", topicTitle: "Механическое движение",
+    // text: "Велосипедист ехал 30 мин со скоростью 16 км/ч. Какое расстояние он проехал?", unit: "км" }
     for (const task of tasks) {
         // li — пункт нумерованного списка ol: номер задачи браузер ставит сам.
         // В одном тесте бывают задачи из разных тем, поэтому тема указана у каждой задачи
-        const item = addElement(list, 'li', '');
-        addElement(item, 'h3', task.topicTitle);
-        addElement(item, 'p', task.text);
+        const item = addElement(list, 'li', ''); // item — пункт <li> на странице, а не задача из currentTest.items
+        addElement(item, 'h3', task.topicTitle); // Заголовок — название темы
+        addElement(item, 'p', task.text);        // Абзац — условие задачи с подставленными числами
 
         // Поле для ответа — обычное текстовое (type = 'text'), а не числовое (type = 'number'):
         // числовое поле не примет ответ с пробелом между разрядами («42 000»), а запятую
@@ -175,23 +221,27 @@ function showTasks(tasks) {
 
         // label связывает подпись с полем: щелчок по слову «Ответ» ставит курсор в поле
         const label = addElement(item, 'label', 'Ответ: ');
-        label.append(input, ` ${task.unit}`);
+        label.append(input, ` ${task.unit}`); // После поля — единица измерения, например «км»
 
         // Пустой абзац для сообщения: «Введите ответ числом…» или результат проверки
         const message = addElement(item, 'p', '');
 
+        // Запоминаем задачу, ее поле и абзац для сообщения; result: null — ответ еще не проверен
         items.push({ task: task, input: input, message: message, result: null });
     }
 
     // На время теста прячем выбор тем (hidden) и показываем блок теста.
     // Кнопка «Начать тест» спрятана вместе с выбором тем, поэтому второй тест
     // не начнется поверх первого
-    document.getElementById('setup').hidden = true;
-    document.getElementById('test').hidden = false;
-    document.getElementById('finish-test').hidden = false;
-    document.getElementById('new-test').hidden = true;
+    // hidden = true прячет элемент, hidden = false снова показывает его
+    document.getElementById('setup').hidden = true;        // Выбор тем и кнопка «Начать тест»
+    document.getElementById('test').hidden = false;        // Блок теста: задачи, а потом итоги
+    document.getElementById('finish-test').hidden = false; // «Завершить тест» — после прошлого теста она спрятана
+    document.getElementById('new-test').hidden = true;     // Кнопка «Новый тест» понадобится только в конце
 
     // Время отсчитываем с момента, когда задачи появились на странице
+    // Тест записываем в общую переменную currentTest: ее читают finishTest, checkAnswers,
+    // showVerdicts и showResults
     currentTest = { items: items, startTime: Date.now() };
 }
 
@@ -199,32 +249,39 @@ function showTasks(tasks) {
 async function finishTest() {
     // Время прохождения — до нажатия кнопки: ожидание ответа сервера в него не входит.
     // Если ответы пришлось исправлять, считается время последнего нажатия
+    // Date.now() — текущее время в миллисекундах; разность — сколько миллисекунд прошло с начала теста
     const time = Date.now() - currentTest.startTime;
-    const testMessage = document.getElementById('test-message');
-    testMessage.textContent = '';
+    const testMessage = document.getElementById('test-message'); // Абзац <p id="test-message"> под задачами
+    testMessage.textContent = '';                                // Убираем сообщение от прошлого нажатия
 
     // Задачи без ответа: поле пустое или в нем одни пробелы (trim убирает пробелы по краям).
     // filter оставляет только такие задачи, length — их количество
+    // (item) => ... — функция-стрелка: для каждой задачи item возвращает true (оставить) или false.
+    // Фигурных скобок и return нет: такая стрелка сама возвращает значение выражения справа от =>
     const emptyCount = currentTest.items.filter((item) => item.input.value.trim() === '').length;
 
     // confirm — окно с кнопками «ОК» и «Отмена»: возвращает true, если нажата «ОК».
     // «Отмена» — вернуться к тесту, ничего не отправляя на проверку
+    // && — «и»: окно появляется, только если есть задачи без ответа.
+    // !confirm(...) истинно, если нажата «Отмена», — тогда return завершает функцию
     if (emptyCount > 0 && !confirm(`Задач без ответа: ${emptyCount}. Задача без ответа считается ошибкой. Завершить тест?`)) {
         return;
     }
 
     // Пока ответы проверяются, кнопка выключена: двойной щелчок не отправит их дважды.
     // Выключаем до первого await — иначе второй щелчок успел бы сработать
-    const button = document.getElementById('finish-test');
+    const button = document.getElementById('finish-test'); // Кнопка «Завершить тест»
     button.disabled = true;
 
     // Поля для ответов на время проверки тоже выключаем: ответ, исправленный, пока идет
     // проверка, не совпал бы с тем, что проверил сервер
     for (const item of currentTest.items) {
-        item.input.disabled = true;
+        item.input.disabled = true; // Выключенное поле видно, но изменить ответ в нем нельзя
     }
 
     try {
+        // checkAnswers (ниже) отправляет ответы на сервер и возвращает задачи, где ответ — не число.
+        // Другие ошибки (например, нет связи с сервером) она передает дальше — в catch ниже
         const invalidItems = await checkAnswers();
 
         // Некоторые ответы сервер не принял, потому что это не числа: тест продолжается.
@@ -232,16 +289,19 @@ async function finishTest() {
         // Проверенные ответы остаются выключенными: на каждую задачу одна попытка
         if (invalidItems.length > 0) {
             for (const item of currentTest.items) {
+                // result === null — ответ не проверен: включаем поле
                 if (item.result === null) item.input.disabled = false;
             }
+            // Сообщение над кнопкой «Завершить тест». Пометку «Введите ответ числом…» под полем
+            // написала checkAnswers: это текст ошибки, который прислал сервер (handleCheck в server.js)
             testMessage.textContent = 'Не все ответы удалось проверить: исправьте ответы с пометкой «Введите ответ числом» и снова нажмите «Завершить тест».';
             // focus ставит курсор в первое такое поле, и браузер прокручивает к нему страницу
             // (выключенное поле фокус не получает, поэтому включаем поля раньше)
-            invalidItems[0].input.focus();
-            return;
+            invalidItems[0].input.focus(); // [0] — первый элемент списка: элементы нумеруются с нуля
+            return;                        // Итоги не показываем: тест продолжается
         }
 
-        showResults(time);
+        showResults(time); // Все введенные ответы проверены — показываем итоги
     } catch (error) {
         // Задача не найдена (сервер перезапускали), нет связи с сервером или ошибка на сервере —
         // повторное нажатие этого не исправит, поэтому тест прерывается.
@@ -249,20 +309,22 @@ async function finishTest() {
         // и узнать результаты еще раз не получится.
         // Начать тест заново можно кнопкой «Новый тест» — ее показывает endTest
         console.error(error);
-        showVerdicts('Не проверено');
-        testMessage.textContent = `Тест прерван. ${error.message}`;
-        endTest();
+        showVerdicts('Не проверено');                               // У непроверенных задач — «Не проверено»
+        testMessage.textContent = `Тест прерван. ${error.message}`; // «Тест прерван. Задача не найдена: …»
+        endTest();                                                  // Показывает кнопку «Новый тест»
     } finally {
         // finally выполняется в любом случае — и после проверки, и после ошибки
-        button.disabled = false;
+        button.disabled = false; // Снова включаем кнопку «Завершить тест»
     }
 }
 
 // Отправляет на проверку ответы, которые еще не проверены, — по очереди, по одному запросу на задачу.
 // Возвращает список задач, ответ которых сервер не принял, потому что это не число
 async function checkAnswers() {
-    const invalidItems = [];
+    const invalidItems = []; // Задачи, ответ которых сервер не принял (не число)
 
+    // Перебираем задачи теста по порядку. await внутри цикла: следующий ответ уходит на сервер,
+    // только когда пришел ответ на предыдущий
     for (const item of currentTest.items) {
         // Ответ, проверенный при прошлом нажатии, второй раз не отправляем:
         // на каждую задачу одна попытка, и сервер его уже не найдет
@@ -278,20 +340,27 @@ async function checkAnswers() {
         try {
             // Сервер отвечает { correct, correctAnswer }. Результат пока только запоминаем:
             // «Верно» и «Неверно» покажет showResults, когда будут проверены все ответы
+            // Запрос POST /api/check обрабатывает handleCheck в server.js. Отправляем номер задачи
+            // и ответ так, как он введен, строкой ("42 000"): число из нее получает сервер (parseUserAnswer)
             item.result = await sendRequest('./api/check', { id: item.task.id, answer: item.input.value });
         } catch (error) {
             // Остальные ошибки (задача не найдена, нет связи с сервером) повтором не исправить:
             // передаем их дальше в finishTest — там тест прервется
+            // error.status — код ответа сервера, его записывает sendRequest (api.js). У ошибки связи
+            // status нет: там undefined («значение не задано»), и это тоже не 400.
+            // throw прерывает checkAnswers и передает ошибку дальше — в catch функции finishTest
             if (error.status !== 400) throw error;
 
             // Код 400 — ответ не число («110 км/ч»). Попытка не потрачена: пишем под полем
             // «Введите ответ числом, например 2,5», и ответ можно исправить
             item.message.textContent = error.message;
+            // Запоминаем задачу. По этому списку finishTest поймет, что тест продолжается,
+            // и поставит курсор в поле первой такой задачи
             invalidItems.push(item);
         }
     }
 
-    return invalidItems;
+    return invalidItems; // Пустой список [] — все введенные ответы проверены
 }
 
 // Пишет под каждой задачей результат проверки: «Верно» или «Неверно. Правильный ответ: …».
@@ -299,11 +368,15 @@ async function checkAnswers() {
 // «Нет ответа» в итогах или «Не проверено», если тест прерван
 function showVerdicts(uncheckedText) {
     for (const item of currentTest.items) {
+        // if ... else if ... else — выбор одного из трех случаев: выполняется первая ветка,
+        // условие которой истинно, а если ни одно не подошло — ветка else
         if (item.result === null) {
-            item.message.textContent = uncheckedText;
+            item.message.textContent = uncheckedText; // Ответ не проверялся
         } else if (item.result.correct) {
-            item.message.textContent = 'Верно';
+            item.message.textContent = 'Верно';       // Сервер ответил correct: true
         } else {
+            // Например, «Неверно. Правильный ответ: 2,5 км». Ответ сервер уже записал так же,
+            // как числа в условии: "2,5", "42 000" (см. formatNumber в generator.js)
             item.message.textContent = `Неверно. Правильный ответ: ${item.result.correctAnswer} ${item.task.unit}`;
         }
     }
@@ -317,102 +390,129 @@ function showResults(time) {
     showVerdicts('Нет ответа');
 
     // filter оставляет задачи, подходящие под условие, length — их количество
+    // && — «и»: сначала проверяем, что ответ проверен (result не null). Если result равен null,
+    // вторая часть уже не вычисляется — иначе чтение null.correct закончилось бы ошибкой
     const correctCount = currentTest.items.filter((item) => item.result !== null && item.result.correct).length;
+    // Задачи без ответа — у них result так и остался null
     const emptyCount = currentTest.items.filter((item) => item.result === null).length;
 
     // Ошибки — все задачи, решенные неправильно, вместе с задачами без ответа
-    const total = currentTest.items.length;
-    let errors = `Ошибок: ${total - correctCount}`;
+    const total = currentTest.items.length;         // Всего задач в тесте
+    let errors = `Ошибок: ${total - correctCount}`; // let — к строке, возможно, допишем уточнение
     if (emptyCount > 0) {
+        // += дописывает текст в конец строки: «Ошибок: 3 (из них без ответа: 1)»
         errors += ` (из них без ответа: ${emptyCount})`;
     }
 
-    const results = document.getElementById('results');
-    results.textContent = '';
+    const results = document.getElementById('results'); // Блок <div id="results"> под кнопкой «Завершить тест»
+    results.textContent = '';                           // Очищаем блок итогов
+    // Заголовок и три абзаца итогов, например: «Правильных ответов: 7 из 10»,
+    // «Ошибок: 3 (из них без ответа: 1)», «Затраченное время: 3 мин 25 с»
     addElement(results, 'h3', 'Итоги');
     addElement(results, 'p', `Правильных ответов: ${correctCount} из ${total}`);
     addElement(results, 'p', errors);
-    addElement(results, 'p', `Затраченное время: ${formatTime(time)}`);
+    addElement(results, 'p', `Затраченное время: ${formatTime(time)}`); // formatTime — в конце этого файла
 
     // === НОВЫЙ БЛОК: Расчет процента и вывод картинки с текстом ===
+    // Процент правильных ответов, округленный до целого: 7 из 10 → 70, 2 из 3 → 67.
+    // Math.round округляет до ближайшего целого числа
     const percent = Math.round((correctCount / total) * 100);
     
     // Вычисляем индекс от 0 до 5 (всего 6 диапазонов)
+    // 100 / 6 = 16,666… — ширина одного диапазона в процентах. Math.floor отбрасывает дробную часть:
+    // 0–16 % → 0, 17–33 % → 1, 34–49 % → 2, 50–66 % → 3, 67–83 % → 4, 84–100 % → 5.
+    // Диапазоны не совсем равные: в 34–49 % — 16 значений, в остальных — по 17
     let imageIndex = Math.floor(percent / (100 / 6));
+    // При 100 % деление дает ровно 6, а картинки с номером 6 нет — поэтому берем 5
     if (imageIndex > 5) imageIndex = 5;
 
     // Настройки для каждого из 6 диапазонов.
+    // Список из 6 объектов: image — картинка из папки images, message — текст под ней.
+    // Номер объекта в списке совпадает с imageIndex: resultLevels[0] — для 0–16 %, resultLevels[5] — для 84–100 %
     const resultLevels = [
+        // 0–16 % правильных ответов
         {
             image: 'result-0.png',
             message: 'Ой! Кажется, физика пока дается нелегко. Стоит повторить формулы и попробовать еще раз!'
         },
+        // 17–33 %
         {
             image: 'result-1.png',
             message: 'Есть над чем поработать. Вы на верном пути, но стоит быть внимательнее с вычислениями.'
         },
+        // 34–49 %
         {
             image: 'result-2.png',
             message: 'Неплохой результат! Вы усвоили половину материала. Осталось подтянуть оставшиеся темы.'
         },
+        // 50–66 %
         {
             image: 'result-3.png',
             message: 'Хороший результат! Вы уверенно справляетесь с большинством задач. Продолжайте в том же духе.'
         },
+        // 67–83 %
         {
             image: 'result-4.png',
             message: 'Отлично! Вы отлично знаете материал и решаете задачи почти без ошибок.'
         },
+        // 84–100 %
         {
             image: 'result-5.png',
             message: 'Превосходно! Максимальная точность. Вы настоящий знаток физики!'
         }
     ];
 
+    // [imageIndex] — элемент списка с этим номером: настройки для полученного диапазона
     const currentLevel = resultLevels[imageIndex];
 
     // Создаем контейнер для картинки и текста
+    // div — блок, в который положим заголовок, картинку и текст
     const feedbackContainer = document.createElement('div');
+    // className — CSS-класс элемента: его оформление (.result-feedback) описано в styles.css
     feedbackContainer.className = 'result-feedback';
 
     // 1. Общий заголовок (он одинаков для всех)
     const title = document.createElement('h3');
     title.textContent = 'Ваш результат:';
-    title.className = 'result-feedback-title';
+    title.className = 'result-feedback-title'; // Оформление — .result-feedback-title в styles.css
     
     // 2. Картинка
     const img = document.createElement('img');
+    // Адрес картинки, например ./images/result-3.png. Сервер отдает эти файлы по списку STATIC_FILES (server.js)
     img.src = `./images/${currentLevel.image}`;
+    // alt — замещающий текст: его видно, если картинка не загрузилась, и его читают программы для незрячих
     img.alt = `Результат: ${percent}%`;
-    img.className = 'result-image';
+    img.className = 'result-image'; // Оформление — .result-image в styles.css
 
     // 3. Текст для конкретного результата
     const text = document.createElement('p');
-    text.textContent = currentLevel.message;
-    text.className = 'result-feedback-text';
+    text.textContent = currentLevel.message; // Текст из resultLevels для этого диапазона
+    text.className = 'result-feedback-text'; // Оформление — .result-feedback-text в styles.css
 
     // Собираем всё вместе
+    // append добавляет в контейнер сразу три элемента по порядку: заголовок, картинку и текст
     feedbackContainer.append(title, img, text);
     
     // Вставляем в блок итогов
+    // Контейнер окажется под строками итогов: правильные ответы, ошибки, время
     results.append(feedbackContainer);
 
-    endTest();
+    endTest(); // Тест окончен: вместо кнопки «Завершить тест» — кнопка «Новый тест»
 }
 
 // Заканчивает тест (после итогов или когда тест прерван): вместо кнопки «Завершить тест»
 // появляется кнопка «Новый тест». Поля для ответов уже выключены (см. finishTest)
 function endTest() {
-    document.getElementById('finish-test').hidden = true;
-    document.getElementById('new-test').hidden = false;
+    document.getElementById('finish-test').hidden = true; // Прячем кнопку «Завершить тест»
+    document.getElementById('new-test').hidden = false;   // Показываем кнопку «Новый тест»
 }
 
 // Кнопка «Новый тест»: прячет задачи прошлого теста и снова показывает выбор тем.
 // Отмеченные темы и количество задач остаются, как были
 function showSetup() {
-    currentTest = null;
-    document.getElementById('test').hidden = true;
-    document.getElementById('setup').hidden = false;
+    currentTest = null;                              // Теста снова нет — как при открытии страницы
+    document.getElementById('test').hidden = true;   // Прячем задачи и итоги
+    document.getElementById('setup').hidden = false; // Снова показываем выбор тем и кнопку «Начать тест»
 }
 
 // Записывает время в минутах и секундах: 205000 мс → «3 мин 25 с», 9000 мс → «9 с».
@@ -420,10 +520,12 @@ function showSetup() {
 // иначе 119,6 с превратились бы в «1 мин 60 с» вместо «2 мин 0 с».
 // Единицы — сокращенно («мин», «с»), чтобы не склонять слова по числу
 function formatTime(milliseconds) {
+    // В секунде 1000 миллисекунд. Math.round округляет до ближайшего целого: 119 600 мс → 119,6 → 120 с
     const totalSeconds = Math.round(milliseconds / 1000);
+    // Math.floor округляет вниз, отбрасывая дробную часть: 205 / 60 = 3,41… → 3
     const minutes = Math.floor(totalSeconds / 60); // Полные минуты
     const seconds = totalSeconds % 60;             // % — остаток от деления: оставшиеся секунды
 
-    if (minutes === 0) return `${seconds} с`;
-    return `${minutes} мин ${seconds} с`;
+    if (minutes === 0) return `${seconds} с`; // Меньше минуты — только секунды: «9 с»
+    return `${minutes} мин ${seconds} с`;     // Например, «3 мин 25 с»
 }
